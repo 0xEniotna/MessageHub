@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Settings, Key, Download, Upload, Trash2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../lib/api';
+import PrivacyNotice from './PrivacyNotice';
+import DataStorageViewer from './DataStorageViewer';
 
 interface TelegramConfig {
   apiId: string;
@@ -501,6 +503,17 @@ export default function SettingsPanel() {
           </ol>
         </div>
       </div>
+
+      {/* Privacy & Data Transparency */}
+      <PrivacyNotice
+        onAccept={() =>
+          toast.success('Thanks for reviewing our privacy policy!')
+        }
+        className="mb-6"
+      />
+
+      {/* Local Data Viewer */}
+      <DataStorageViewer />
     </div>
   );
 }
