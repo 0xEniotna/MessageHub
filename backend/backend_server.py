@@ -73,17 +73,13 @@ CORS(app, origins=allowed_origins)
 # Configuration
 SESSIONS_DIR = 'sessions'
 DATABASE_FILE = os.getenv('DATABASE_URL', 'telegram_sender.db').replace('sqlite:///', '')
-API_ID = os.getenv('API_ID')
-API_HASH = os.getenv('API_HASH')
 
 # Rate limiting
 RATE_LIMIT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PER_MINUTE', '10'))
 MAX_RECIPIENTS_PER_MESSAGE = int(os.getenv('MAX_RECIPIENTS_PER_MESSAGE', '50'))
 
-# Validate required environment variables
-if not API_ID or not API_HASH:
-    logger.error("API_ID and API_HASH must be set in config.env")
-    raise ValueError("Missing required Telegram API credentials")
+# Note: API_ID and API_HASH are provided per-user through the login form
+# No global validation needed since each user has their own credentials
 
 # Global variables
 telegram_manager = None
