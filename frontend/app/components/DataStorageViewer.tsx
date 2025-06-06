@@ -369,9 +369,13 @@ export default function DataStorageViewer() {
           }}
         >
           🔒 <strong>Privacy Note:</strong> This data is stored locally in your
-          browser and is never automatically sent to our servers. Only session
-          tokens and scheduled messages are sent to our backend when you
-          explicitly use those features! 🔒
+          browser and is never automatically sent to our servers.{' '}
+          <strong>
+            Your phone number is never saved or stored permanently
+          </strong>{' '}
+          - it's only used during authentication. Only session tokens and
+          scheduled messages are sent to our backend when you explicitly use
+          those features! 🔒
         </p>
       </div>
     </div>

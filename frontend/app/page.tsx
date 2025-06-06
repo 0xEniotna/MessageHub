@@ -254,6 +254,16 @@ export default function Home() {
       const response = await apiClient.login(credentials);
 
       if (response.success) {
+        // Save credentials to localStorage for transparency
+        localStorage.setItem(
+          'telegram-config',
+          JSON.stringify({
+            apiId: credentials.api_id,
+            apiHash: credentials.api_hash,
+            phoneNumber: credentials.phone_number,
+          })
+        );
+
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully connected!');
@@ -284,6 +294,16 @@ export default function Home() {
       });
 
       if (response.success) {
+        // Save credentials to localStorage for transparency
+        localStorage.setItem(
+          'telegram-config',
+          JSON.stringify({
+            apiId: credentials.api_id,
+            apiHash: credentials.api_hash,
+            phoneNumber: credentials.phone_number,
+          })
+        );
+
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully authenticated!');
@@ -463,6 +483,7 @@ export default function Home() {
 
   const logout = () => {
     apiClient.clearSession();
+    localStorage.removeItem('telegram-config'); // Clear stored credentials
     setIsAuthenticated(false);
     setStep('credentials');
     setChats([]);
