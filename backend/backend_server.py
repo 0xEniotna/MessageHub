@@ -30,18 +30,24 @@ from dotenv import load_dotenv
 import tempfile
 from werkzeug.utils import secure_filename
 
-# Load environment variables - try multiple paths
-config_paths = ['../config/config.env', 'config/config.env', './config/config.env']
+# Configure logging first
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load configuration
+config_paths = [
+    'config/config.env.prod',
+    'config/config.env',
+    '.env'
+]
+
 for config_path in config_paths:
     if os.path.exists(config_path):
         load_dotenv(config_path)
         break
 else:
     logger.warning("No config.env file found. Using environment variables.")
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
