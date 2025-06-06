@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import apiClient from './lib/api';
 import GroupListManager from './components/GroupListManager';
+import DataStorageViewer from './components/DataStorageViewer';
+import PrivacyNotice from './components/PrivacyNotice';
 
 interface Chat {
   id: string;
@@ -68,9 +70,9 @@ export default function Home() {
   const [message, setMessage] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'compose' | 'chats' | 'lists'>(
-    'compose'
-  );
+  const [activeTab, setActiveTab] = useState<
+    'compose' | 'chats' | 'lists' | 'privacy'
+  >('compose');
 
   // Group list states
   const [groupLists, setGroupLists] = useState<GroupList[]>([]);
@@ -949,69 +951,255 @@ export default function Home() {
   // Verification step
   if (step === 'verification') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+      <div
+        className="min-h-screen"
+        style={{
+          background:
+            'linear-gradient(45deg, #ff00ff, #00ffff, #ffff00, #ff00ff)',
+          backgroundSize: '400% 400%',
+          animation: 'gradient 3s ease infinite',
+        }}
+      >
+        <style jsx>{`
+          @keyframes gradient {
+            0% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+            100% {
+              background-position: 0% 50%;
+            }
+          }
+          @keyframes blink {
+            0%,
+            50% {
+              opacity: 1;
+            }
+            51%,
+            100% {
+              opacity: 0;
+            }
+          }
+          @keyframes bounce {
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+              transform: translateY(0);
+            }
+            40% {
+              transform: translateY(-10px);
+            }
+            60% {
+              transform: translateY(-5px);
+            }
+          }
+          .retro-border {
+            border: 3px solid #000;
+            box-shadow: 3px 3px 0px #666;
+          }
+          .retro-button {
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            border: 2px solid #000;
+            box-shadow: 2px 2px 0px #333;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.1s;
+          }
+          .retro-button:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 3px 3px 0px #333;
+          }
+          .retro-input {
+            border: 2px solid #000;
+            background: #ffff99;
+            font-family: 'Courier New', monospace;
+            box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.3);
+          }
+        `}</style>
+
+        <div className="flex flex-col items-center justify-center min-h-screen p-4">
+          {/* Header with retro styling */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Verification
-            </h1>
-            <p className="text-gray-600">Enter the code sent to your phone</p>
+            <div
+              className="text-6xl font-bold mb-4"
+              style={{
+                fontFamily: 'Impact, Arial Black, sans-serif',
+                color: '#ff0000',
+                textShadow: '3px 3px 0px #000, 6px 6px 0px #666',
+                animation: 'bounce 2s infinite',
+              }}
+            >
+              🔐 VERIFICATION 🔐
+            </div>
+            <div
+              className="text-2xl font-bold"
+              style={{
+                fontFamily: 'Comic Sans MS, cursive',
+                color: '#0000ff',
+                textShadow: '2px 2px 0px #fff',
+                animation: 'blink 1s infinite',
+              }}
+            >
+              ★ ENTER YOUR SECRET CODE ★
+            </div>
           </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <span className="text-red-700 text-sm">{error}</span>
+          {/* Main content box */}
+          <div
+            className="retro-border p-8 max-w-md w-full"
+            style={{
+              background: 'linear-gradient(135deg, #ff99cc, #99ccff)',
+            }}
+          >
+            <div className="text-center mb-6">
+              <div
+                className="text-xl font-bold mb-2"
+                style={{
+                  fontFamily: 'Arial Black, sans-serif',
+                  color: '#000080',
+                  textDecoration: 'underline',
+                }}
+              >
+                📱 CODE VERIFICATION 📱
+              </div>
+              <div
+                className="text-sm"
+                style={{
+                  fontFamily: 'Times New Roman, serif',
+                  color: '#800080',
+                  fontStyle: 'italic',
+                }}
+              >
+                Check your phone for the magic numbers!
+              </div>
             </div>
-          )}
 
-          {success && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span className="text-green-700 text-sm">{success}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleVerification} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Verification Code
-              </label>
-              <input
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                className="input-field"
-                placeholder="12345"
-                required
-              />
-            </div>
-
-            {requiresPassword && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  2FA Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input-field"
-                  placeholder="Your 2FA password"
-                  required
-                />
+            {error && (
+              <div
+                className="mb-4 p-3 retro-border text-center"
+                style={{
+                  background: '#ff6666',
+                  color: '#fff',
+                  fontFamily: 'Courier New, monospace',
+                  fontWeight: 'bold',
+                }}
+              >
+                ⚠️ ERROR: {error} ⚠️
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary flex items-center justify-center gap-2"
+            {success && (
+              <div
+                className="mb-4 p-3 retro-border text-center"
+                style={{
+                  background: '#66ff66',
+                  color: '#000',
+                  fontFamily: 'Courier New, monospace',
+                  fontWeight: 'bold',
+                }}
+              >
+                ✅ SUCCESS: {success} ✅
+              </div>
+            )}
+
+            <form onSubmit={handleVerification} className="space-y-4">
+              <div>
+                <label
+                  className="block text-sm font-bold mb-1"
+                  style={{
+                    fontFamily: 'Arial, sans-serif',
+                    color: '#000080',
+                  }}
+                >
+                  🔢 Verification Code:
+                </label>
+                <input
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  className="retro-input w-full p-2 text-black"
+                  placeholder="Enter the 5-digit code..."
+                  required
+                />
+              </div>
+
+              {requiresPassword && (
+                <div>
+                  <label
+                    className="block text-sm font-bold mb-1"
+                    style={{
+                      fontFamily: 'Arial, sans-serif',
+                      color: '#000080',
+                    }}
+                  >
+                    🛡️ 2FA Password:
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="retro-input w-full p-2 text-black"
+                    placeholder="Your 2FA password..."
+                    required
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="retro-button w-full p-3 text-black text-lg"
+              >
+                {loading ? '⏳ VERIFYING...' : '🚀 VERIFY & ENTER! 🚀'}
+              </button>
+            </form>
+
+            <div
+              className="mt-6 text-center text-sm"
+              style={{
+                fontFamily: 'Comic Sans MS, cursive',
+                color: '#800000',
+              }}
             >
-              <Key className="h-4 w-4" />
-              {loading ? 'Verifying...' : 'Verify'}
-            </button>
-          </form>
+              <div className="mb-2">📱 Check your Telegram app! 📱</div>
+              <div
+                style={{
+                  color: '#000080',
+                  fontWeight: 'bold',
+                }}
+              >
+                👆 Enter the code you received 👆
+              </div>
+            </div>
+          </div>
+
+          {/* Footer with retro elements */}
+          <div className="mt-8 text-center">
+            <div
+              className="text-lg font-bold"
+              style={{
+                fontFamily: 'Impact, sans-serif',
+                color: '#ff0000',
+                textShadow: '2px 2px 0px #000',
+              }}
+            >
+              🔒 SECURE RETRO VERIFICATION 🔒
+            </div>
+            <div
+              className="text-sm mt-2"
+              style={{
+                fontFamily: 'Courier New, monospace',
+                color: '#000080',
+              }}
+            >
+              © 2024 MessageHub - Security Level: MAXIMUM
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1226,6 +1414,14 @@ export default function Home() {
             >
               📋 GROUP LISTS ({groupLists.length})
             </button>
+            <button
+              onClick={() => setActiveTab('privacy')}
+              className={`retro-nav-button px-4 py-2 text-black text-sm ${
+                activeTab === 'privacy' ? 'active' : ''
+              }`}
+            >
+              🔒 PRIVACY
+            </button>
           </div>
         </div>
       </nav>
@@ -1311,7 +1507,7 @@ export default function Home() {
                         setSelectedChats([]); // Clear individual selections when using group list
                       }
                     }}
-                    className="input-field"
+                    className="retro-input w-full p-2 text-black"
                   >
                     <option value="">Select a group list...</option>
                     {groupLists.map((list) => (
@@ -1488,9 +1684,12 @@ export default function Home() {
                         setSelectedImages([]);
                         setImagePreviewUrls([]);
                       }}
-                      className="text-red-600 hover:text-red-700"
+                      className="retro-button px-3 py-1 text-black text-sm"
+                      style={{
+                        background: 'linear-gradient(45deg, #ff9999, #ffcccc)',
+                      }}
                     >
-                      Remove all
+                      🗑️ REMOVE ALL
                     </button>
                   </div>
                 )}
@@ -1549,7 +1748,7 @@ export default function Home() {
                           value={scheduledDate}
                           onChange={(e) => setScheduledDate(e.target.value)}
                           min={new Date().toISOString().split('T')[0]} // Prevent past dates
-                          className="input-field"
+                          className="retro-input w-full p-2 text-black"
                           required
                         />
                       </div>
@@ -1561,7 +1760,7 @@ export default function Home() {
                           type="time"
                           value={scheduledTime}
                           onChange={(e) => setScheduledTime(e.target.value)}
-                          className="input-field"
+                          className="retro-input w-full p-2 text-black"
                           required
                         />
                       </div>
@@ -1636,15 +1835,18 @@ export default function Home() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search chats by name or username..."
-                  className="input-field pl-10"
+                  className="retro-input pl-10"
                 />
                 <MessageSquare className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="retro-button px-3 py-1 text-black text-sm"
+                    style={{
+                      background: 'linear-gradient(45deg, #ffcc99, #fff999)',
+                    }}
                   >
-                    <X className="h-4 w-4" />
+                    🗑️ CLEAR SEARCH
                   </button>
                 )}
               </div>
@@ -1664,9 +1866,12 @@ export default function Home() {
                 </p>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="text-telegram-600 hover:text-telegram-700 text-sm"
+                  className="retro-button px-3 py-2 text-black text-sm"
+                  style={{
+                    background: 'linear-gradient(45deg, #ffcc99, #fff999)',
+                  }}
                 >
-                  Clear search
+                  🗑️ CLEAR SEARCH
                 </button>
               </div>
             ) : (
@@ -1751,33 +1956,32 @@ export default function Home() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSelectedChats([])}
-                  className="btn-secondary text-sm"
+                  className="retro-button px-3 py-2 text-black text-sm"
                 >
-                  Clear All
+                  🗑️ CLEAR ALL
                 </button>
                 <button
                   onClick={() =>
                     setSelectedChats(filteredChats.map((c) => c.id))
                   }
-                  className="btn-primary text-sm"
+                  className="retro-button px-3 py-2 text-black text-sm"
                 >
-                  Select {searchQuery ? 'Filtered' : 'All'}
+                  ✅ SELECT {searchQuery ? 'FILTERED' : 'ALL'}
                 </button>
                 {selectedChats.length > 0 && (
                   <>
                     <button
                       onClick={() => setIsAddingToList(true)}
-                      className="btn-secondary text-sm flex items-center gap-2"
+                      className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
                     >
                       <UserPlus className="h-4 w-4" />
-                      Add to List
+                      📝 ADD TO LIST
                     </button>
                     <button
                       onClick={() => setIsCreatingList(true)}
-                      className="btn-primary text-sm flex items-center gap-2"
+                      className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
                     >
-                      <Plus className="h-4 w-4" />
-                      Create List
+                      <Plus className="h-4 w-4" />➕ CREATE LIST
                     </button>
                   </>
                 )}
@@ -1798,7 +2002,7 @@ export default function Home() {
                     <select
                       value={selectedExistingList}
                       onChange={(e) => setSelectedExistingList(e.target.value)}
-                      className="input-field w-full"
+                      className="retro-input w-full"
                     >
                       <option value="">Choose a list...</option>
                       {groupLists.map((list) => (
@@ -1832,20 +2036,25 @@ export default function Home() {
                     <button
                       onClick={addToExistingList}
                       disabled={!selectedExistingList}
-                      className="btn-primary text-sm flex items-center gap-2"
+                      className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
+                      style={{
+                        opacity: !selectedExistingList ? 0.5 : 1,
+                      }}
                     >
                       <UserPlus className="h-4 w-4" />
-                      Add to List
+                      📝 ADD TO LIST
                     </button>
                     <button
                       onClick={() => {
                         setIsAddingToList(false);
                         setSelectedExistingList('');
                       }}
-                      className="btn-secondary text-sm"
+                      className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
+                      style={{
+                        background: 'linear-gradient(45deg, #ff9999, #ffcccc)',
+                      }}
                     >
-                      <X className="h-4 w-4" />
-                      Cancel
+                      <X className="h-4 w-4" />❌ CANCEL
                     </button>
                   </div>
                 </div>
@@ -1864,22 +2073,26 @@ export default function Home() {
                     value={newListName}
                     onChange={(e) => setNewListName(e.target.value)}
                     placeholder="List name..."
-                    className="input-field flex-1"
+                    className="retro-input flex-1"
                   />
                   <button
                     onClick={createGroupList}
-                    className="btn-primary text-sm"
+                    className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
                   >
                     <Save className="h-4 w-4" />
+                    💾 SAVE
                   </button>
                   <button
                     onClick={() => {
                       setIsCreatingList(false);
                       setNewListName('');
                     }}
-                    className="btn-secondary text-sm"
+                    className="retro-button px-3 py-2 text-black text-sm flex items-center gap-2"
+                    style={{
+                      background: 'linear-gradient(45deg, #ff9999, #ffcccc)',
+                    }}
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" />❌ CANCEL
                   </button>
                 </div>
                 <p className="text-sm text-blue-600 mt-1">
@@ -1907,6 +2120,45 @@ export default function Home() {
               groupLists={groupLists}
               setGroupLists={setGroupLists}
             />
+          </div>
+        )}
+
+        {activeTab === 'privacy' && (
+          <div className="retro-card p-6">
+            <h2
+              className="text-2xl font-bold mb-6"
+              style={{
+                fontFamily: 'Impact, Arial Black, sans-serif',
+                color: '#000080',
+                textShadow: '2px 2px 0px #fff',
+                textDecoration: 'underline',
+              }}
+            >
+              🔒 PRIVACY & DATA STORAGE 🔒
+            </h2>
+
+            <div className="space-y-6">
+              <div
+                className="retro-border p-1"
+                style={{
+                  background: 'linear-gradient(135deg, #e6ffe6, #e6f3ff)',
+                }}
+              >
+                <PrivacyNotice
+                  onAccept={() => setSuccess('✅ Privacy notice acknowledged!')}
+                  className=""
+                />
+              </div>
+
+              <div
+                className="retro-border p-4"
+                style={{
+                  background: 'linear-gradient(135deg, #fff9e6, #ffe6f3)',
+                }}
+              >
+                <DataStorageViewer />
+              </div>
+            </div>
           </div>
         )}
       </main>

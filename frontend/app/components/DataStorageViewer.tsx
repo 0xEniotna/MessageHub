@@ -167,51 +167,114 @@ export default function DataStorageViewer() {
   };
 
   return (
-    <div className="card">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
-          <Database className="h-6 w-6 text-telegram-600" />
-          <h3 className="text-lg font-semibold text-gray-900">
-            Local Storage Overview
+          <div
+            className="p-2"
+            style={{
+              background: 'linear-gradient(45deg, #ff99ff, #99ff99)',
+              border: '2px solid #000',
+              boxShadow: '2px 2px 0px #333',
+            }}
+          >
+            <Database className="h-6 w-6 text-black" />
+          </div>
+          <h3
+            className="text-lg font-bold"
+            style={{
+              fontFamily: 'Impact, Arial Black, sans-serif',
+              color: '#000080',
+              textShadow: '2px 2px 0px #fff',
+            }}
+          >
+            💾 LOCAL STORAGE OVERVIEW 💾
           </h3>
         </div>
         <button
           onClick={loadStorageData}
-          className="btn-secondary flex items-center space-x-2"
+          className="px-3 py-2 text-black text-sm flex items-center space-x-2 font-bold"
+          style={{
+            background: 'linear-gradient(45deg, #ff6b6b, #ffd93d)',
+            border: '2px solid #000',
+            boxShadow: '2px 2px 0px #333',
+            fontFamily: 'Courier New, monospace',
+            textTransform: 'uppercase',
+            transition: 'all 0.1s',
+          }}
         >
           <RefreshCw className="h-4 w-4" />
-          <span>Refresh</span>
+          <span>🔄 REFRESH</span>
         </button>
       </div>
 
-      <p className="text-sm text-gray-600 mb-4">
-        This shows exactly what data is stored in your browser. All data stays
-        on your device unless explicitly sent to the server.
+      <p
+        className="text-sm mb-4 font-bold text-center"
+        style={{
+          fontFamily: 'Comic Sans MS, cursive',
+          color: '#800080',
+        }}
+      >
+        🔍 This shows exactly what data is stored in your browser. All data
+        stays on your device unless explicitly sent to the server! 🔍
       </p>
 
       <div className="space-y-3">
         {storageItems.map((item) => (
           <div
             key={item.key}
-            className={`border rounded-lg p-4 ${
-              item.hasData
-                ? 'border-green-200 bg-green-50'
-                : 'border-gray-200 bg-gray-50'
-            }`}
+            className="p-4"
+            style={{
+              border: '3px solid #000',
+              boxShadow: '3px 3px 0px #666',
+              background: item.hasData
+                ? 'linear-gradient(135deg, #ccffcc, #ccffff)'
+                : 'linear-gradient(135deg, #ffcccc, #ffffcc)',
+            }}
           >
             <div className="flex items-center justify-between mb-2">
               <div>
-                <h4 className="font-medium text-gray-900">{item.label}</h4>
-                <p className="text-sm text-gray-600">{item.description}</p>
+                <h4
+                  className="font-bold"
+                  style={{
+                    fontFamily: 'Arial Black, sans-serif',
+                    color: '#000080',
+                  }}
+                >
+                  {item.label}
+                </h4>
+                <p
+                  className="text-sm"
+                  style={{
+                    fontFamily: 'Verdana, sans-serif',
+                    color: '#800000',
+                  }}
+                >
+                  {item.description}
+                </p>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500">{item.size}</span>
+                <span
+                  className="text-sm font-bold"
+                  style={{
+                    fontFamily: 'Courier New, monospace',
+                    color: '#000080',
+                  }}
+                >
+                  {item.size}
+                </span>
                 {item.hasData && (
                   <>
                     {item.isSensitive && (
                       <button
                         onClick={() => toggleSensitiveView(item.key)}
-                        className="p-1 text-gray-400 hover:text-gray-600"
+                        className="p-1 font-bold"
+                        style={{
+                          background:
+                            'linear-gradient(45deg, #ffff99, #99ffff)',
+                          border: '2px solid #000',
+                          boxShadow: '1px 1px 0px #333',
+                        }}
                         title={
                           showSensitive[item.key]
                             ? 'Hide sensitive data'
@@ -219,25 +282,35 @@ export default function DataStorageViewer() {
                         }
                       >
                         {showSensitive[item.key] ? (
-                          <EyeOff className="h-4 w-4" />
+                          <EyeOff className="h-4 w-4 text-black" />
                         ) : (
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 text-black" />
                         )}
                       </button>
                     )}
                     <button
                       onClick={() => viewData(item.key)}
-                      className="p-1 text-blue-600 hover:text-blue-800"
+                      className="p-1 font-bold"
+                      style={{
+                        background: 'linear-gradient(45deg, #99ccff, #ccccff)',
+                        border: '2px solid #000',
+                        boxShadow: '1px 1px 0px #333',
+                      }}
                       title="Log full data to console"
                     >
-                      <Database className="h-4 w-4" />
+                      <Database className="h-4 w-4 text-black" />
                     </button>
                     <button
                       onClick={() => clearItem(item.key, item.label)}
-                      className="p-1 text-red-600 hover:text-red-800"
+                      className="p-1 font-bold"
+                      style={{
+                        background: 'linear-gradient(45deg, #ff9999, #ffcccc)',
+                        border: '2px solid #000',
+                        boxShadow: '1px 1px 0px #333',
+                      }}
                       title="Clear this data"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 text-black" />
                     </button>
                   </>
                 )}
@@ -245,7 +318,15 @@ export default function DataStorageViewer() {
             </div>
 
             {item.hasData && (
-              <div className="mt-2 p-2 bg-white rounded border text-xs text-gray-700 font-mono">
+              <div
+                className="mt-2 p-2 text-xs font-bold"
+                style={{
+                  background: '#ffff99',
+                  border: '2px solid #000',
+                  fontFamily: 'Courier New, monospace',
+                  color: '#000080',
+                }}
+              >
                 {item.isSensitive
                   ? showSensitive[item.key]
                     ? localStorage.getItem(item.key)?.slice(0, 200) +
@@ -258,20 +339,39 @@ export default function DataStorageViewer() {
             )}
 
             {!item.hasData && (
-              <div className="mt-2 text-xs text-gray-500 italic">
-                No data stored
+              <div
+                className="mt-2 text-xs font-bold italic text-center"
+                style={{
+                  fontFamily: 'Comic Sans MS, cursive',
+                  color: '#666666',
+                }}
+              >
+                📭 No data stored
               </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-sm text-blue-800">
-          <strong>Privacy Note:</strong> This data is stored locally in your
+      <div
+        className="mt-6 p-3"
+        style={{
+          background: 'linear-gradient(45deg, #e6f3ff, #ffe6f3)',
+          border: '3px solid #000',
+          boxShadow: '3px 3px 0px #666',
+        }}
+      >
+        <p
+          className="text-sm font-bold"
+          style={{
+            fontFamily: 'Comic Sans MS, cursive',
+            color: '#000080',
+          }}
+        >
+          🔒 <strong>Privacy Note:</strong> This data is stored locally in your
           browser and is never automatically sent to our servers. Only session
           tokens and scheduled messages are sent to our backend when you
-          explicitly use those features.
+          explicitly use those features! 🔒
         </p>
       </div>
     </div>
