@@ -2183,6 +2183,62 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Footer with GitHub link */}
+      <footer className="mt-16 pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div
+            className="retro-border p-4 text-center"
+            style={{
+              background: 'linear-gradient(45deg, #e6f3ff, #ffe6f3, #f3ffe6)',
+            }}
+          >
+            <div
+              className="text-lg font-bold mb-2"
+              style={{
+                fontFamily: 'Impact, Arial Black, sans-serif',
+                color: '#000080',
+                textShadow: '2px 2px 0px #fff',
+              }}
+            >
+              🚀 OPEN SOURCE PROJECT 🚀
+            </div>
+            <div
+              className="text-sm font-bold mb-3"
+              style={{
+                fontFamily: 'Comic Sans MS, cursive',
+                color: '#800080',
+              }}
+            >
+              ⭐ Check out the source code and contribute! ⭐
+            </div>
+            <a
+              href="https://github.com/0xEniotna/MessageHub"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="retro-button px-6 py-3 text-black font-bold inline-flex items-center gap-3"
+              style={{
+                background: 'linear-gradient(45deg, #ff99ff, #99ffff)',
+                textDecoration: 'none',
+                fontSize: '16px',
+              }}
+            >
+              <span>💻</span>
+              <span>VIEW ON GITHUB</span>
+              <span>⭐</span>
+            </a>
+            <div
+              className="text-xs mt-3"
+              style={{
+                fontFamily: 'Courier New, monospace',
+                color: '#666666',
+              }}
+            >
+              🌟 Star the repo if you find it useful! 🌟
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
