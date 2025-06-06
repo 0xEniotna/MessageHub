@@ -2,17 +2,6 @@
 
 A modern, retro-styled web application for sending messages and media through Telegram with group management capabilities.
 
-## ⚠️ SECURITY WARNING
-
-**NEVER commit sensitive data to this repository!**
-
-Before setting up, ensure you:
-
-1. Copy `config/config.env.example` to `config/config.env`
-2. Fill in your actual API credentials in `config/config.env`
-3. Generate new secure keys for production
-4. Never commit `config/config.env` or any `.env` files
-
 ## ✨ Features
 
 - 🎨 **Retro 90s Web Design** - Authentic nostalgic interface
