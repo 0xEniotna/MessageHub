@@ -24,7 +24,7 @@ export default function DataStorageViewer() {
       {
         key: 'telegram-config',
         label: 'Telegram Configuration',
-        description: 'API ID, API Hash, and Phone Number',
+        description: 'API ID and API Hash (Phone number NOT stored)',
         size: '',
         hasData: false,
         isSensitive: true,
@@ -114,13 +114,9 @@ export default function DataStorageViewer() {
         const config = JSON.parse(data);
         return `API ID: ${
           config.apiId ? '***' + config.apiId.slice(-4) : 'Not set'
-        }, Phone: ${
-          config.phoneNumber
-            ? config.phoneNumber.slice(0, 3) +
-              '***' +
-              config.phoneNumber.slice(-4)
-            : 'Not set'
-        }`;
+        } | API Hash: ${
+          config.apiHash ? '***' + config.apiHash.slice(-8) : 'Not set'
+        } | Phone: NOT STORED (privacy protection)`;
       } catch {
         return 'Invalid data format';
       }
@@ -370,12 +366,10 @@ export default function DataStorageViewer() {
         >
           🔒 <strong>Privacy Note:</strong> This data is stored locally in your
           browser and is never automatically sent to our servers.{' '}
-          <strong>
-            Your phone number is never saved or stored permanently
-          </strong>{' '}
-          - it's only used during authentication. Only session tokens and
-          scheduled messages are sent to our backend when you explicitly use
-          those features! 🔒
+          <strong>Your phone number is NEVER stored permanently</strong> - it's
+          only used during authentication and immediately discarded. Only API
+          credentials, session tokens and scheduled messages are stored as
+          needed! 🔒
         </p>
       </div>
     </div>

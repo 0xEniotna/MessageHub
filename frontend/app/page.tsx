@@ -254,13 +254,13 @@ export default function Home() {
       const response = await apiClient.login(credentials);
 
       if (response.success) {
-        // Save credentials to localStorage for transparency
+        // Save only API credentials to localStorage for transparency (NOT phone number)
         localStorage.setItem(
           'telegram-config',
           JSON.stringify({
             apiId: credentials.api_id,
             apiHash: credentials.api_hash,
-            phoneNumber: credentials.phone_number,
+            // phoneNumber is intentionally NOT stored for privacy
           })
         );
 
@@ -294,13 +294,13 @@ export default function Home() {
       });
 
       if (response.success) {
-        // Save credentials to localStorage for transparency
+        // Save only API credentials to localStorage for transparency (NOT phone number)
         localStorage.setItem(
           'telegram-config',
           JSON.stringify({
             apiId: credentials.api_id,
             apiHash: credentials.api_hash,
-            phoneNumber: credentials.phone_number,
+            // phoneNumber is intentionally NOT stored for privacy
           })
         );
 
