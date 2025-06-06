@@ -613,8 +613,8 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'ok',
-        'telegram_connected': len(telegram_manager.clients) > 0,
-        'active_clients': len(telegram_manager.clients)
+        'timestamp': datetime.now().isoformat(),
+        'scheduler_running': message_processor.running if message_processor else False
     })
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -941,6 +941,149 @@ def delete_scheduled_message(message_id):
         logger.error(f"Error deleting message: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/scheduler/status', methods=['GET'])
+def scheduler_status():
+    """Get scheduler status and stats"""
+    try:
+        # Get scheduled message stats
+        pending_messages = db_manager.get_scheduled_messages()
+        pending_count = len([m for m in pending_messages if m['status'] == 'pending'])
+        sent_count = len([m for m in pending_messages if m['status'] == 'sent'])
+        failed_count = len([m for m in pending_messages if m['status'] == 'failed'])
+        
+        return jsonify({
+            'scheduler_running': message_processor.running if message_processor else False,
+            'stats': {
+                'pending_messages': pending_count,
+                'sent_messages': sent_count,
+                'failed_messages': failed_count,
+                'total_messages': len(pending_messages)
+            },
+            'next_check': 'Every 30 seconds',
+            'timezone': 'Server local time'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduler status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+class ScheduledMessageProcessor:
+    """Background processor for scheduled messages"""
+    
+    def __init__(self, db_manager, telegram_manager):
+        self.db_manager = db_manager
+        self.telegram_manager = telegram_manager
+        self.running = False
+        self.thread = None
+    
+    def start(self):
+        """Start the background scheduler"""
+        if self.running:
+            return
+        
+        self.running = True
+        self.thread = threading.Thread(target=self._run_scheduler, daemon=True)
+        self.thread.start()
+        logger.info("📅 Scheduled message processor started")
+    
+    def stop(self):
+        """Stop the background scheduler"""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=5)
+        logger.info("📅 Scheduled message processor stopped")
+    
+    def _run_scheduler(self):
+        """Main scheduler loop"""
+        while self.running:
+            try:
+                self._process_due_messages()
+                # Sleep for 30 seconds (check twice per minute for better accuracy)
+                time.sleep(30)
+            except Exception as e:
+                logger.error(f"Error in scheduler: {str(e)}")
+                time.sleep(60)  # Wait longer on error
+    
+    def _process_due_messages(self):
+        """Check for and process messages that are due"""
+        try:
+            # Get all pending scheduled messages
+            messages = self.db_manager.get_scheduled_messages()
+            now = datetime.now()
+            
+            for message in messages:
+                if message['status'] != 'pending':
+                    continue
+                
+                # Parse scheduled time
+                try:
+                    scheduled_time = datetime.fromisoformat(message['scheduled_for'].replace('Z', '+00:00'))
+                    # Remove timezone info for comparison (assuming local time)
+                    if scheduled_time.tzinfo:
+                        scheduled_time = scheduled_time.replace(tzinfo=None)
+                except ValueError as e:
+                    logger.error(f"Invalid date format for message {message['id']}: {message['scheduled_for']}")
+                    self.db_manager.update_message_status(message['id'], 'failed', now.isoformat())
+                    continue
+                
+                # Check if message is due (with 1 minute tolerance)
+                if scheduled_time <= now:
+                    logger.info(f"🚀 Processing scheduled message {message['id']} (due: {scheduled_time})")
+                    self._execute_message(message)
+        
+        except Exception as e:
+            logger.error(f"Error processing due messages: {str(e)}")
+    
+    def _execute_message(self, message):
+        """Execute a single scheduled message"""
+        message_id = message['id']
+        phone_number = message['phone_number']
+        
+        try:
+            # Check if user is still connected
+            if not self.telegram_manager.is_connected(phone_number):
+                logger.warning(f"User {phone_number} not connected, skipping message {message_id}")
+                self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                return
+            
+            # Parse recipients
+            try:
+                recipients = json.loads(message['recipients']) if isinstance(message['recipients'], str) else message['recipients']
+            except json.JSONDecodeError:
+                logger.error(f"Invalid recipients format for message {message_id}")
+                self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                return
+            
+            # Send the message
+            logger.info(f"📤 Sending scheduled message {message_id} to {len(recipients)} recipients")
+            
+            # Use the async executor to run the coroutine
+            results = run_async(self.telegram_manager.send_message_to_recipients(
+                phone_number, 
+                recipients, 
+                message['message']
+            ))
+            
+            # Update status based on results
+            sent_count = sum(1 for r in results if r['success'])
+            failed_count = len(results) - sent_count
+            
+            if sent_count > 0:
+                status = 'sent'
+                logger.info(f"✅ Scheduled message {message_id} sent successfully ({sent_count}/{len(results)})")
+            else:
+                status = 'failed'
+                logger.error(f"❌ Scheduled message {message_id} failed to send to all recipients")
+            
+            self.db_manager.update_message_status(message_id, status, datetime.now().isoformat())
+            
+        except Exception as e:
+            logger.error(f"❌ Error executing scheduled message {message_id}: {str(e)}")
+            self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+
+# Global scheduler instance
+message_processor = None
+
 if __name__ == '__main__':
     # Create necessary directories
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -950,10 +1093,23 @@ if __name__ == '__main__':
     telegram_manager = TelegramManager(db_manager)
     async_executor = AsyncExecutor()
     
+    # Initialize and start the scheduled message processor
+    message_processor = ScheduledMessageProcessor(db_manager, telegram_manager)
+    message_processor.start()
+    
     try:
+        logger.info("🚀 Starting Telegram Backend Server...")
+        logger.info(f"📅 Scheduled message processor: ENABLED")
+        logger.info(f"🗄️  Database: {DATABASE_FILE}")
+        logger.info(f"📁 Sessions: {SESSIONS_DIR}")
+        
         # Run Flask app
         app.run(debug=True, host='0.0.0.0', port=8000)
     finally:
         # Clean shutdown
+        logger.info("🛑 Shutting down server...")
+        if message_processor:
+            message_processor.stop()
         if async_executor:
-            async_executor.close() 
+            async_executor.close()
+        logger.info("✅ Server shutdown complete") 
