@@ -89,7 +89,9 @@ export default function MessageComposer({
 
         // Show detailed results if available
         if (result.results && result.results.length > 0) {
-          const failedRecipients = result.results.filter((r) => !r.success);
+          const failedRecipients = result.results.filter(
+            (r: any) => !r.success
+          );
           if (failedRecipients.length > 0) {
             console.warn('Failed recipients:', failedRecipients);
           }

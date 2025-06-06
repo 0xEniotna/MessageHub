@@ -40,7 +40,7 @@ export default function SettingsPanel() {
       const token = localStorage.getItem('telegram-auth-token');
       if (token) {
         // If we have a token, check if it's still valid
-        const status = await apiClient.getAuthStatus();
+        const status = await apiClient.checkAuthStatus();
         setIsConnected(status.connected);
 
         if (status.connected) {
@@ -48,7 +48,7 @@ export default function SettingsPanel() {
         } else {
           // Token is invalid, clear it
           localStorage.removeItem('telegram-auth-token');
-          apiClient.logout();
+          apiClient.clearSession();
         }
       } else {
         setIsConnected(false);
@@ -58,7 +58,7 @@ export default function SettingsPanel() {
       setIsConnected(false);
       // Clear invalid token
       localStorage.removeItem('telegram-auth-token');
-      apiClient.logout();
+      apiClient.clearSession();
     }
   };
 
@@ -113,7 +113,7 @@ export default function SettingsPanel() {
 
     setIsLoading(true);
     try {
-      const result = await apiClient.verify({
+      const result = await apiClient.verifyCode({
         phone_number: config.phoneNumber,
         code: verificationCode,
         password: requiresPassword ? password : undefined,
@@ -131,7 +131,7 @@ export default function SettingsPanel() {
         await checkAuthStatus();
       } else if (result.requires_password) {
         setRequiresPassword(true);
-        toast.info('Two-factor authentication required');
+        toast.success('Two-factor authentication required');
       } else {
         toast.error(result.message || 'Verification failed');
       }
@@ -143,7 +143,7 @@ export default function SettingsPanel() {
   };
 
   const logout = () => {
-    apiClient.logout();
+    apiClient.clearSession();
     setIsConnected(false);
     setRequiresCode(false);
     setRequiresPassword(false);
