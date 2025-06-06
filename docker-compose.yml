@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: telegram_sender
+      POSTGRES_USER: telegram_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: unless-stopped
+
+  # Redis for sessions and caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build: .
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DATABASE_URL=postgresql://telegram_user:${POSTGRES_PASSWORD:-secure_password_change_me}@postgres:5432/telegram_sender
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - FLASK_ENV=production
+    ports:
+      - '8000:8000'
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./sessions:/app/sessions
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # Frontend (optional - you can deploy separately)
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/app
+    command: sh -c "npm install && npm run build && npm start"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

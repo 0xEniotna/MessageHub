@@ -1,0 +1,81 @@
+{
+    "version": "1.0",
+    "exportDate": "2024-01-15T10:30:00.000Z",
+    "lists": [
+        {
+            "id": "1642248600000",
+            "name": "Marketing Team",
+            "createdAt": "2024-01-15T10:30:00.000Z",
+            "groups": [
+                {
+                    "id": "1642248600001",
+                    "name": "Marketing Channel",
+                    "type": "group",
+                    "identifier": "@marketing_team"
+                },
+                {
+                    "id": "1642248600002",
+                    "name": "John Smith",
+                    "type": "user",
+                    "identifier": "@johnsmith"
+                },
+                {
+                    "id": "1642248600003",
+                    "name": "Announcements Group",
+                    "type": "group",
+                    "identifier": "-1001234567890"
+                }
+            ]
+        },
+        {
+            "id": "1642248600004",
+            "name": "Friends",
+            "createdAt": "2024-01-15T10:30:00.000Z",
+            "groups": [
+                {
+                    "id": "1642248600005",
+                    "name": "Alice Johnson",
+                    "type": "user",
+                    "identifier": "+1234567890"
+                },
+                {
+                    "id": "1642248600006",
+                    "name": "Bob Wilson",
+                    "type": "user",
+                    "identifier": "987654321"
+                },
+                {
+                    "id": "1642248600007",
+                    "name": "Weekend Chat",
+                    "type": "group",
+                    "identifier": "@weekend_friends"
+                }
+            ]
+        },
+        {
+            "id": "1642248600008",
+            "name": "Family",
+            "createdAt": "2024-01-15T10:30:00.000Z",
+            "groups": [
+                {
+                    "id": "1642248600009",
+                    "name": "Mom",
+                    "type": "user",
+                    "identifier": "+1987654321"
+                },
+                {
+                    "id": "1642248600010",
+                    "name": "Dad",
+                    "type": "user",
+                    "identifier": "+1123456789"
+                },
+                {
+                    "id": "1642248600011",
+                    "name": "Family Group",
+                    "type": "group",
+                    "identifier": "@family_chat"
+                }
+            ]
+        }
+    ]
+}
