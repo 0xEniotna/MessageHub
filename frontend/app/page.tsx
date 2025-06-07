@@ -1796,30 +1796,57 @@ export default function Home() {
                     </div>
                     {scheduledDate && scheduledTime && (
                       <div className="text-sm space-y-1">
-                        <div className="text-blue-600">
-                          📅 Your local time:{' '}
+                        <div className="text-blue-600 font-medium">
+                          📅 Message will be sent at:{' '}
                           {new Date(
                             `${scheduledDate}T${scheduledTime}`
-                          ).toLocaleString()}
+                          ).toLocaleString()}{' '}
+                          (your local time)
                         </div>
-                        <div className="text-green-600">
-                          🌍 Server time (UTC):{' '}
-                          {new Date(
-                            new Date(
-                              `${scheduledDate}T${scheduledTime}`
-                            ).getTime() +
-                              new Date().getTimezoneOffset() * 60000
-                          )
-                            .toISOString()
-                            .replace('T', ' ')
-                            .slice(0, 19)}{' '}
-                          UTC
+                        <div className="text-gray-500 text-xs">
+                          🌍 Converted to server time (UTC):{' '}
+                          {(() => {
+                            // Parse as local time components
+                            const [datePart, timePart] = [
+                              `${scheduledDate}`,
+                              `${scheduledTime}:00`,
+                            ];
+                            const [year, month, day] = datePart
+                              .split('-')
+                              .map(Number);
+                            const [hour, minute, second] = timePart
+                              .split(':')
+                              .map(Number);
+
+                            // Create local date
+                            const localDate = new Date(
+                              year,
+                              month - 1,
+                              day,
+                              hour,
+                              minute,
+                              second
+                            );
+
+                            // Convert to UTC using timezone offset (same logic as backend)
+                            const timezoneOffset =
+                              new Date().getTimezoneOffset();
+                            const utcDate = new Date(
+                              localDate.getTime() + timezoneOffset * 60000
+                            );
+
+                            return (
+                              utcDate
+                                .toISOString()
+                                .replace('T', ' ')
+                                .slice(0, 19) + ' UTC'
+                            );
+                          })()}{' '}
+                          (for internal storage)
                         </div>
-                        <div className="text-xs text-gray-500">
-                          ℹ️ Message will be sent at the server time shown above
-                          <br />
-                          🌐 Your timezone offset:{' '}
-                          {new Date().getTimezoneOffset()} minutes from UTC
+                        <div className="text-xs text-green-600 font-medium">
+                          ✅ Your message will be sent exactly at the time you
+                          selected in your timezone!
                         </div>
                       </div>
                     )}
