@@ -794,14 +794,38 @@ def send_message():
     recipients = data.get('recipients', [])
     message = data.get('message', '')
     schedule_for = data.get('schedule_for')
+    timezone_offset = data.get('timezone_offset')  # Client timezone offset in minutes
     
     if not recipients or not message:
         return jsonify({'error': 'Missing recipients or message'}), 400
     
     try:
         if schedule_for:
-            # Schedule for later
-            message_id = db_manager.save_scheduled_message(phone_number, recipients, message, schedule_for)
+            # Handle timezone conversion for scheduled messages
+            if timezone_offset is not None:
+                # Convert client time to UTC
+                try:
+                    # Parse the client's local time
+                    local_time = datetime.fromisoformat(schedule_for)
+                    
+                    # Convert to UTC by subtracting the timezone offset
+                    # timezone_offset is in minutes (positive for timezones ahead of UTC)
+                    utc_time = local_time - timedelta(minutes=timezone_offset)
+                    
+                    # Store in UTC format
+                    schedule_for_utc = utc_time.isoformat() + 'Z'
+                    
+                    logger.info(f"🌍 Timezone conversion: {schedule_for} (local) → {schedule_for_utc} (UTC), offset: {timezone_offset}min")
+                    
+                    message_id = db_manager.save_scheduled_message(phone_number, recipients, message, schedule_for_utc)
+                except Exception as e:
+                    logger.error(f"Timezone conversion error: {str(e)}")
+                    # Fallback to original behavior
+                    message_id = db_manager.save_scheduled_message(phone_number, recipients, message, schedule_for)
+            else:
+                # No timezone info provided - save as-is (legacy behavior)
+                message_id = db_manager.save_scheduled_message(phone_number, recipients, message, schedule_for)
+            
             return jsonify({
                 'success': True,
                 'message': 'Message scheduled successfully',
@@ -1091,6 +1115,19 @@ def scheduler_debug():
         logger.error(f"Error in scheduler debug: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/timezone-info', methods=['GET'])
+def timezone_info():
+    """Get server timezone information"""
+    now = datetime.now()
+    return jsonify({
+        'server_time_utc': now.isoformat() + 'Z',
+        'server_timezone': 'UTC',
+        'instructions': {
+            'frontend': 'Send timezone_offset in minutes with scheduled messages',
+            'example': 'For EST (UTC-5): timezone_offset = -300, for CET (UTC+1): timezone_offset = 60'
+        }
+    })
+
 class ScheduledMessageProcessor:
     """Background processor for scheduled messages"""
     
@@ -1135,7 +1172,7 @@ class ScheduledMessageProcessor:
             messages = self.db_manager.get_scheduled_messages()
             now = datetime.now()
             
-            logger.info(f"🔍 Checking {len(messages)} scheduled messages. Server time: {now.isoformat()}")
+            logger.info(f"🔍 Checking {len(messages)} scheduled messages. Server time (UTC): {now.isoformat()}")
             
             for message in messages:
                 if message['status'] != 'pending':
@@ -1146,23 +1183,48 @@ class ScheduledMessageProcessor:
                     scheduled_for_str = message['scheduled_for']
                     logger.info(f"📅 Processing message {message['id']}: scheduled_for='{scheduled_for_str}'")
                     
-                    # Handle different time formats
+                    # Parse the scheduled time - treat as user's local time if no timezone info
                     if scheduled_for_str.endswith('Z'):
-                        # UTC time format
+                        # UTC time format - already in UTC
                         scheduled_time = datetime.fromisoformat(scheduled_for_str.replace('Z', '+00:00'))
                         if scheduled_time.tzinfo:
-                            # Convert to server local time (UTC) for comparison
                             scheduled_time = scheduled_time.replace(tzinfo=None)
-                    elif '+' in scheduled_for_str or scheduled_for_str.count('-') > 2:
-                        # Time with timezone info
+                    elif '+' in scheduled_for_str and scheduled_for_str.count(':') >= 2:
+                        # Time with timezone info - convert to UTC
+                        from datetime import timezone
                         scheduled_time = datetime.fromisoformat(scheduled_for_str)
                         if scheduled_time.tzinfo:
-                            # Convert to UTC for comparison with server time
-                            scheduled_time = scheduled_time.utctimetuple()
-                            scheduled_time = datetime(*scheduled_time[:6])
+                            # Convert to UTC
+                            scheduled_time_utc = scheduled_time.utctimetuple()
+                            scheduled_time = datetime(*scheduled_time_utc[:6])
+                        else:
+                            # Should not happen but fallback
+                            scheduled_time = scheduled_time
                     else:
-                        # Assume it's already in server timezone
+                        # No timezone info - this is the common case from frontend
+                        # Frontend sends user's local time, but we need to treat it as UTC for now
+                        # until we implement proper timezone detection
                         scheduled_time = datetime.fromisoformat(scheduled_for_str)
+                        
+                        # For now: assume the scheduled time is intended as user's local time
+                        # We'll compare against server time but add timezone awareness later
+                        
+                        # Quick fix: If scheduled time seems to be in the past by more than a few hours,
+                        # it's likely a timezone issue - try adding common timezone offsets
+                        time_diff = (now - scheduled_time).total_seconds()
+                        
+                        if time_diff > 3600:  # More than 1 hour in the past
+                            # Common timezone adjustments (this is a temporary fix)
+                            # Try different timezone offsets to find a reasonable match
+                            for offset_hours in [0, 1, 2, 3, 4, 5, 6, 7, 8, -5, -6, -7, -8]:
+                                adjusted_time = scheduled_time + timedelta(hours=offset_hours)
+                                adjusted_diff = (adjusted_time - now).total_seconds()
+                                
+                                # If this adjustment makes the time future and reasonable (within 24h)
+                                if -300 <= adjusted_diff <= 86400:  # Between 5 min ago and 24h future
+                                    scheduled_time = adjusted_time
+                                    logger.info(f"🔧 Adjusted scheduled time by {offset_hours}h for timezone: {scheduled_time.isoformat()}")
+                                    break
                     
                     logger.info(f"⏰ Message {message['id']}: scheduled={scheduled_time.isoformat()}, now={now.isoformat()}")
                     
@@ -1172,7 +1234,7 @@ class ScheduledMessageProcessor:
                     continue
                 
                 # Check if message is due (with 1 minute tolerance)
-                if scheduled_time <= now:
+                if scheduled_time <= now + timedelta(minutes=1):
                     logger.info(f"🚀 Processing scheduled message {message['id']} (due: {scheduled_time})")
                     self._execute_message(message)
                 else:
