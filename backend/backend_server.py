@@ -295,6 +295,54 @@ class TelegramManager:
         self.clients: Dict[str, TelegramClient] = {}
         self.db_manager = db_manager
         self.pending_codes: Dict[str, Dict] = {}  # Store pending verification codes
+        
+        # Restore existing sessions on startup
+        logger.info("🔄 Restoring existing Telegram sessions...")
+        run_async(self._restore_existing_sessions())
+    
+    async def _restore_existing_sessions(self):
+        """Restore existing Telegram sessions from database and session files"""
+        try:
+            # Get all saved user sessions from database
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.execute('SELECT phone_number, api_id, api_hash FROM user_sessions')
+                sessions = cursor.fetchall()
+            
+            restored_count = 0
+            for session in sessions:
+                phone_number = session['phone_number']
+                api_id = session['api_id']
+                api_hash = session['api_hash']
+                
+                try:
+                    session_file = f"{SESSIONS_DIR}/{phone_number}.session"
+                    
+                    # Check if session file exists
+                    if os.path.exists(session_file):
+                        # Try to restore the client
+                        client = TelegramClient(session_file, int(api_id), api_hash)
+                        await client.connect()
+                        
+                        if await client.is_user_authorized():
+                            self.clients[phone_number] = client
+                            restored_count += 1
+                            logger.info(f"✅ Restored session for {phone_number}")
+                        else:
+                            logger.warning(f"⚠️  Session expired for {phone_number}")
+                            await client.disconnect()
+                    else:
+                        logger.warning(f"⚠️  Session file not found for {phone_number}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Failed to restore session for {phone_number}: {str(e)}")
+            
+            if restored_count > 0:
+                logger.info(f"🎉 Successfully restored {restored_count} Telegram session(s)")
+            else:
+                logger.info("ℹ️  No existing sessions to restore")
+                
+        except Exception as e:
+            logger.error(f"❌ Error restoring sessions: {str(e)}")
     
     async def create_client(self, api_id: str, api_hash: str, phone_number: str) -> Dict:
         """Create and authenticate Telegram client"""
@@ -577,6 +625,26 @@ class TelegramManager:
     def is_connected(self, phone_number: str) -> bool:
         """Check if client is connected"""
         return phone_number in self.clients
+    
+    async def close_all_sessions(self):
+        """Close all active Telegram sessions"""
+        logger.info("🔄 Closing all Telegram sessions...")
+        closed_count = 0
+        
+        for phone_number, client in list(self.clients.items()):
+            try:
+                await client.disconnect()
+                closed_count += 1
+                logger.info(f"✅ Closed session for {phone_number}")
+            except Exception as e:
+                logger.error(f"❌ Error closing session for {phone_number}: {str(e)}")
+        
+        self.clients.clear()
+        
+        if closed_count > 0:
+            logger.info(f"🎉 Successfully closed {closed_count} Telegram session(s)")
+        else:
+            logger.info("ℹ️  No sessions to close")
 
 # Initialize components
 db_manager = DatabaseManager(DATABASE_FILE)
@@ -1187,6 +1255,11 @@ if __name__ == '__main__':
     finally:
         # Clean shutdown
         logger.info("🛑 Shutting down server...")
+        
+        # Close all Telegram sessions
+        if telegram_manager:
+            run_async(telegram_manager.close_all_sessions())
+        
         if message_processor:
             message_processor.stop()
         if async_executor:

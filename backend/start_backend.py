@@ -113,6 +113,11 @@ def main():
         print("\n🛑 Shutting down server...")
         # Clean shutdown
         try:
+            # Close all Telegram sessions
+            if 'telegram_manager' in locals():
+                from backend_server import run_async
+                run_async(telegram_manager.close_all_sessions())
+            
             if 'message_processor' in locals():
                 message_processor.stop()
             if 'async_executor' in locals():
