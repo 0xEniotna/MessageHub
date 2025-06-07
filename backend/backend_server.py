@@ -272,10 +272,13 @@ class DatabaseManager:
                 ''', (status, message_id))
             conn.commit()
     
-    def delete_scheduled_message(self, message_id: int) -> bool:
-        """Delete a scheduled message"""
+    def delete_scheduled_message(self, message_id: int, phone_number: str) -> bool:
+        """Delete a scheduled message (only if it belongs to the user)"""
         with self.get_connection() as conn:
-            cursor = conn.execute('DELETE FROM scheduled_messages WHERE id = ?', (message_id,))
+            cursor = conn.execute(
+                'DELETE FROM scheduled_messages WHERE id = ? AND phone_number = ?', 
+                (message_id, phone_number)
+            )
             conn.commit()
             return cursor.rowcount > 0
     
@@ -1023,7 +1026,7 @@ def delete_scheduled_message(message_id):
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
-        success = db_manager.delete_scheduled_message(message_id)
+        success = db_manager.delete_scheduled_message(message_id, phone_number)
         if success:
             return jsonify({'success': True})
         else:
@@ -1036,12 +1039,22 @@ def delete_scheduled_message(message_id):
 @app.route('/api/scheduler/status', methods=['GET'])
 def scheduler_status():
     """Get scheduler status and stats"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'No authorization header'}), 401
+    
+    token = auth_header.split(' ')[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
     try:
-        # Get scheduled message stats
-        pending_messages = db_manager.get_scheduled_messages()
-        pending_count = len([m for m in pending_messages if m['status'] == 'pending'])
-        sent_count = len([m for m in pending_messages if m['status'] == 'sent'])
-        failed_count = len([m for m in pending_messages if m['status'] == 'failed'])
+        # Get scheduled message stats for this user only
+        user_messages = db_manager.get_scheduled_messages(phone_number)
+        pending_count = len([m for m in user_messages if m['status'] == 'pending'])
+        sent_count = len([m for m in user_messages if m['status'] == 'sent'])
+        failed_count = len([m for m in user_messages if m['status'] == 'failed'])
         
         return jsonify({
             'scheduler_running': message_processor.running if message_processor else False,
@@ -1051,7 +1064,7 @@ def scheduler_status():
                 'pending_messages': pending_count,
                 'sent_messages': sent_count,
                 'failed_messages': failed_count,
-                'total_messages': len(pending_messages)
+                'total_messages': len(user_messages)
             },
             'next_check': 'Every 30 seconds',
             'timezone': 'Server local time'
