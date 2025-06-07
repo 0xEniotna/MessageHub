@@ -1318,8 +1318,15 @@ class ScheduledMessageProcessor:
             self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
 
 if __name__ == '__main__':
+    # This block is only for development testing
+    # In production, use the wsgi.py entry point with Gunicorn
+    print("⚠️  WARNING: This is the development server.")
+    print("🚀 For production, use: gunicorn -c gunicorn.conf.py wsgi:application")
+    print("="*60)
+    
     # Create necessary directories
     os.makedirs(SESSIONS_DIR, exist_ok=True)
+    os.makedirs('logs', exist_ok=True)
     
     # Initialize global managers
     db_manager = DatabaseManager(DATABASE_FILE)
@@ -1334,11 +1341,11 @@ if __name__ == '__main__':
     logger.info("🔄 Restoring existing Telegram sessions...")
     run_async(telegram_manager.restore_existing_sessions())
     
-    logger.info("🚀 Starting Flask server...")
+    logger.info("🚀 Starting Flask development server...")
     
     try:
-        # Run Flask app
-        app.run(debug=True, host='0.0.0.0', port=8000)
+        # Run Flask app in development mode
+        app.run(debug=False, host='0.0.0.0', port=8000)
     finally:
         # Clean shutdown
         logger.info("🛑 Shutting down server...")
