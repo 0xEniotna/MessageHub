@@ -296,11 +296,9 @@ class TelegramManager:
         self.db_manager = db_manager
         self.pending_codes: Dict[str, Dict] = {}  # Store pending verification codes
         
-        # Restore existing sessions on startup
-        logger.info("🔄 Restoring existing Telegram sessions...")
-        run_async(self._restore_existing_sessions())
+        logger.info("✅ TelegramManager initialized")
     
-    async def _restore_existing_sessions(self):
+    async def restore_existing_sessions(self):
         """Restore existing Telegram sessions from database and session files"""
         try:
             # Get all saved user sessions from database
@@ -1244,12 +1242,13 @@ if __name__ == '__main__':
     message_processor = ScheduledMessageProcessor(db_manager, telegram_manager)
     message_processor.start()
     
+    # Restore existing sessions after all components are ready
+    logger.info("🔄 Restoring existing Telegram sessions...")
+    run_async(telegram_manager.restore_existing_sessions())
+    
+    logger.info("🚀 Starting Flask server...")
+    
     try:
-        logger.info("🚀 Starting Telegram Backend Server...")
-        logger.info(f"📅 Scheduled message processor: ENABLED")
-        logger.info(f"🗄️  Database: {DATABASE_FILE}")
-        logger.info(f"📁 Sessions: {SESSIONS_DIR}")
-        
         # Run Flask app
         app.run(debug=True, host='0.0.0.0', port=8000)
     finally:
