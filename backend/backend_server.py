@@ -676,6 +676,24 @@ def run_async(coro):
         async_executor = AsyncExecutor()
     return async_executor.run_async(coro)
 
+def get_auth_token(request) -> tuple:
+    """Safely extract JWT token from Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return None, ('No authorization header', 401)
+    
+    auth_parts = auth_header.split(' ')
+    if len(auth_parts) != 2 or auth_parts[0] != 'Bearer':
+        return None, ('Invalid authorization header format', 401)
+    
+    token = auth_parts[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number:
+        return None, ('Not authenticated', 401)
+    
+    return phone_number, None
+
 # API Routes
 
 @app.route('/api/health', methods=['GET'])
@@ -946,15 +964,9 @@ def send_message_with_media():
 @app.route('/api/messages/scheduled', methods=['GET'])
 def get_scheduled_messages():
     """Get all scheduled messages"""
-    auth_header = request.headers.get('Authorization')
-    if not auth_header:
-        return jsonify({'error': 'No authorization header'}), 401
-    
-    token = auth_header.split(' ')[1]
-    phone_number = verify_token(token)
-    
-    if not phone_number:
-        return jsonify({'error': 'Not authenticated'}), 401
+    phone_number, error = get_auth_token(request)
+    if error:
+        return jsonify({'error': error[0]}), error[1]
     
     try:
         messages = db_manager.get_scheduled_messages(phone_number)
