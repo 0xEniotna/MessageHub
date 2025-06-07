@@ -85,6 +85,7 @@ MAX_RECIPIENTS_PER_MESSAGE = int(os.getenv('MAX_RECIPIENTS_PER_MESSAGE', '50'))
 telegram_manager = None
 async_executor = None
 db_manager = None
+message_processor = None
 
 # Rate limiting storage (in production, use Redis)
 rate_limit_storage = {}
@@ -1161,9 +1162,6 @@ class ScheduledMessageProcessor:
         except Exception as e:
             logger.error(f"❌ Error executing scheduled message {message_id}: {str(e)}")
             self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
-
-# Global scheduler instance
-message_processor = None
 
 if __name__ == '__main__':
     # Create necessary directories
