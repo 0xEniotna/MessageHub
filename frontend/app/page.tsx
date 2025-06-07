@@ -401,6 +401,9 @@ export default function Home() {
             'schedule_for',
             `${scheduledDate}T${scheduledTime}:00`
           );
+          // Add timezone offset in minutes (e.g., -300 for EST, 60 for CET)
+          const timezoneOffset = new Date().getTimezoneOffset();
+          formData.append('timezone_offset', timezoneOffset.toString());
         }
 
         // Add images
@@ -411,7 +414,7 @@ export default function Home() {
         response = await apiClient.sendMessageWithMedia(formData);
       } else {
         // Send text-only message using regular endpoint
-        response = await apiClient.sendMessage({
+        const requestData: any = {
           recipients: recipientChats.map((chat) => ({
             id: chat.id,
             name: chat.name,
@@ -419,11 +422,16 @@ export default function Home() {
             identifier: chat.id,
           })),
           message: message.trim(),
-          schedule_for:
-            isScheduled && scheduledDate && scheduledTime
-              ? `${scheduledDate}T${scheduledTime}:00`
-              : undefined,
-        });
+        };
+
+        // Add scheduling with timezone if needed
+        if (isScheduled && scheduledDate && scheduledTime) {
+          requestData.schedule_for = `${scheduledDate}T${scheduledTime}:00`;
+          // Add timezone offset in minutes (e.g., -300 for EST, 60 for CET)
+          requestData.timezone_offset = new Date().getTimezoneOffset();
+        }
+
+        response = await apiClient.sendMessage(requestData);
       }
 
       if (response.success) {
@@ -1787,11 +1795,29 @@ export default function Home() {
                       </div>
                     </div>
                     {scheduledDate && scheduledTime && (
-                      <div className="text-sm text-blue-600">
-                        📅 Message will be sent on{' '}
-                        {new Date(
-                          `${scheduledDate}T${scheduledTime}`
-                        ).toLocaleString()}
+                      <div className="text-sm space-y-1">
+                        <div className="text-blue-600">
+                          📅 Local time:{' '}
+                          {new Date(
+                            `${scheduledDate}T${scheduledTime}`
+                          ).toLocaleString()}
+                        </div>
+                        <div className="text-green-600">
+                          🌍 UTC time:{' '}
+                          {new Date(
+                            new Date(
+                              `${scheduledDate}T${scheduledTime}`
+                            ).getTime() -
+                              new Date().getTimezoneOffset() * 60000
+                          )
+                            .toISOString()
+                            .replace('T', ' ')
+                            .slice(0, 19)}{' '}
+                          UTC
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          ℹ️ Message will be sent based on server time (UTC)
+                        </div>
                       </div>
                     )}
                   </div>
