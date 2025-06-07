@@ -71,7 +71,7 @@ export default function Home() {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<
-    'compose' | 'chats' | 'lists' | 'privacy'
+    'compose' | 'chats' | 'lists' | 'scheduled' | 'privacy'
   >('compose');
 
   // Group list states
@@ -87,6 +87,8 @@ export default function Home() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
+  const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
 
   // New state for adding to existing lists
   const [selectedExistingList, setSelectedExistingList] = useState<string>('');
@@ -264,6 +266,11 @@ export default function Home() {
           })
         );
 
+        // Store session token for API calls
+        if (response.session_token) {
+          localStorage.setItem('session_token', response.session_token);
+        }
+
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully connected!');
@@ -304,6 +311,11 @@ export default function Home() {
           })
         );
 
+        // Store session token for API calls
+        if (response.session_token) {
+          localStorage.setItem('session_token', response.session_token);
+        }
+
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully authenticated!');
@@ -329,6 +341,87 @@ export default function Home() {
       setChats(response.chats || []);
     } catch (error: any) {
       setError(error.message || 'Failed to load chats');
+    }
+  };
+
+  const loadScheduledMessages = async () => {
+    setLoadingScheduled(true);
+    try {
+      const response = await fetch(
+        'https://141-136-35-8.sslip.io/api/messages/scheduled',
+        {
+          headers: {
+            Authorization: `Bearer ${
+              localStorage.getItem('session_token') || ''
+            }`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to load scheduled messages');
+      }
+
+      const data = await response.json();
+      setScheduledMessages(data.messages || []);
+    } catch (error: any) {
+      setError(error.message || 'Failed to load scheduled messages');
+    } finally {
+      setLoadingScheduled(false);
+    }
+  };
+
+  const executeScheduledMessage = async (messageId: string) => {
+    try {
+      const response = await fetch(
+        `https://141-136-35-8.sslip.io/api/messages/execute/${messageId}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${
+              localStorage.getItem('session_token') || ''
+            }`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to execute message');
+      }
+
+      setSuccess('Message executed successfully!');
+      loadScheduledMessages(); // Refresh the list
+    } catch (error: any) {
+      setError(error.message || 'Failed to execute message');
+    }
+  };
+
+  const deleteScheduledMessage = async (messageId: string) => {
+    if (!confirm('Are you sure you want to delete this scheduled message?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://141-136-35-8.sslip.io/api/messages/${messageId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${
+              localStorage.getItem('session_token') || ''
+            }`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete message');
+      }
+
+      setSuccess('Message deleted successfully!');
+      loadScheduledMessages(); // Refresh the list
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete message');
     }
   };
 
@@ -457,6 +550,11 @@ export default function Home() {
         setIsScheduled(false);
         setScheduledDate('');
         setScheduledTime('');
+
+        // If message was scheduled, refresh the scheduled messages list
+        if (isScheduled) {
+          loadScheduledMessages();
+        }
       } else {
         setError('Failed to send message');
       }
@@ -1444,6 +1542,17 @@ export default function Home() {
               📋 GROUP LISTS ({groupLists.length})
             </button>
             <button
+              onClick={() => {
+                setActiveTab('scheduled');
+                loadScheduledMessages();
+              }}
+              className={`retro-nav-button px-4 py-2 text-black text-sm ${
+                activeTab === 'scheduled' ? 'active' : ''
+              }`}
+            >
+              📅 SCHEDULED ({scheduledMessages.length})
+            </button>
+            <button
               onClick={() => setActiveTab('privacy')}
               className={`retro-nav-button px-4 py-2 text-black text-sm ${
                 activeTab === 'privacy' ? 'active' : ''
@@ -2197,6 +2306,208 @@ export default function Home() {
               groupLists={groupLists}
               setGroupLists={setGroupLists}
             />
+          </div>
+        )}
+
+        {activeTab === 'scheduled' && (
+          <div className="retro-card p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2
+                className="text-2xl font-bold"
+                style={{
+                  fontFamily: 'Impact, Arial Black, sans-serif',
+                  color: '#000080',
+                  textShadow: '2px 2px 0px #fff',
+                  textDecoration: 'underline',
+                }}
+              >
+                📅 SCHEDULED MESSAGES 📅
+              </h2>
+              <button
+                onClick={loadScheduledMessages}
+                disabled={loadingScheduled}
+                className="retro-button px-4 py-2 text-black text-sm"
+              >
+                {loadingScheduled ? '⏳ LOADING...' : '🔄 REFRESH'}
+              </button>
+            </div>
+
+            {loadingScheduled ? (
+              <div className="text-center py-8">
+                <div className="text-lg font-bold text-gray-600">
+                  ⏳ Loading scheduled messages...
+                </div>
+              </div>
+            ) : scheduledMessages.length === 0 ? (
+              <div className="text-center py-12">
+                <div
+                  className="text-4xl mb-4"
+                  style={{
+                    fontFamily: 'Impact, sans-serif',
+                    color: '#666',
+                  }}
+                >
+                  📭
+                </div>
+                <div
+                  className="text-xl font-bold mb-2"
+                  style={{
+                    fontFamily: 'Arial Black, sans-serif',
+                    color: '#000080',
+                  }}
+                >
+                  NO SCHEDULED MESSAGES
+                </div>
+                <div
+                  className="text-sm"
+                  style={{
+                    fontFamily: 'Comic Sans MS, cursive',
+                    color: '#666',
+                  }}
+                >
+                  Schedule your first message from the Compose tab!
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {scheduledMessages.map((message) => {
+                  const scheduledDate = new Date(message.scheduled_for);
+                  const isOverdue =
+                    scheduledDate < new Date() && message.status === 'pending';
+                  const isPending = message.status === 'pending';
+
+                  return (
+                    <div
+                      key={message.id}
+                      className="retro-border p-4"
+                      style={{
+                        background: isPending
+                          ? 'linear-gradient(135deg, #fff9e6, #e6f9ff)'
+                          : message.status === 'sent'
+                          ? 'linear-gradient(135deg, #e6ffe6, #f0fff0)'
+                          : 'linear-gradient(135deg, #ffe6e6, #fff0f0)',
+                      }}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`px-3 py-1 retro-border text-xs font-bold ${
+                              message.status === 'pending'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : message.status === 'sent'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                            style={{
+                              fontFamily: 'Courier New, monospace',
+                            }}
+                          >
+                            {message.status.toUpperCase()}
+                          </span>
+                          {isOverdue && (
+                            <span
+                              className="px-3 py-1 retro-border text-xs font-bold bg-orange-100 text-orange-800"
+                              style={{
+                                fontFamily: 'Courier New, monospace',
+                              }}
+                            >
+                              OVERDUE
+                            </span>
+                          )}
+                        </div>
+
+                        {isPending && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() =>
+                                executeScheduledMessage(message.id)
+                              }
+                              className="retro-button px-3 py-1 text-black text-xs"
+                              style={{
+                                background:
+                                  'linear-gradient(45deg, #99ff99, #66ff66)',
+                              }}
+                            >
+                              ▶️ SEND NOW
+                            </button>
+                            <button
+                              onClick={() => deleteScheduledMessage(message.id)}
+                              className="retro-button px-3 py-1 text-black text-xs"
+                              style={{
+                                background:
+                                  'linear-gradient(45deg, #ff9999, #ff6666)',
+                              }}
+                            >
+                              🗑️ DELETE
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <div
+                            className="text-sm font-bold text-gray-700 mb-1"
+                            style={{ fontFamily: 'Arial Black, sans-serif' }}
+                          >
+                            📅 Scheduled For:
+                          </div>
+                          <div
+                            className="text-sm"
+                            style={{ fontFamily: 'Courier New, monospace' }}
+                          >
+                            {scheduledDate.toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div
+                            className="text-sm font-bold text-gray-700 mb-1"
+                            style={{ fontFamily: 'Arial Black, sans-serif' }}
+                          >
+                            👥 Recipients:
+                          </div>
+                          <div
+                            className="text-sm"
+                            style={{ fontFamily: 'Courier New, monospace' }}
+                          >
+                            {Array.isArray(message.recipients)
+                              ? message.recipients.length
+                              : 'Unknown'}{' '}
+                            recipients
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div
+                          className="text-sm font-bold text-gray-700 mb-1"
+                          style={{ fontFamily: 'Arial Black, sans-serif' }}
+                        >
+                          📝 Message:
+                        </div>
+                        <div
+                          className="text-sm bg-white p-2 retro-border"
+                          style={{
+                            fontFamily: 'Courier New, monospace',
+                            maxHeight: '100px',
+                            overflowY: 'auto',
+                          }}
+                        >
+                          {message.message}
+                        </div>
+                      </div>
+
+                      {message.executed_at && (
+                        <div className="mt-3 text-xs text-gray-500">
+                          <strong>Executed:</strong>{' '}
+                          {new Date(message.executed_at).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
