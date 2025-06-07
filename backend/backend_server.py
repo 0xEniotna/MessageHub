@@ -808,9 +808,10 @@ def send_message():
                     # Parse the client's local time
                     local_time = datetime.fromisoformat(schedule_for)
                     
-                    # Convert to UTC by subtracting the timezone offset
-                    # timezone_offset is in minutes (positive for timezones ahead of UTC)
-                    utc_time = local_time - timedelta(minutes=timezone_offset)
+                    # Convert to UTC by adding the timezone offset
+                    # timezone_offset from getTimezoneOffset() is negative for timezones ahead of UTC
+                    # Example: CET (UTC+1) returns -60, so: local_time + (-60) = local_time - 60 = UTC
+                    utc_time = local_time + timedelta(minutes=timezone_offset)
                     
                     # Store in UTC format
                     schedule_for_utc = utc_time.isoformat() + 'Z'

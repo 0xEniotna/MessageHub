@@ -1797,17 +1797,17 @@ export default function Home() {
                     {scheduledDate && scheduledTime && (
                       <div className="text-sm space-y-1">
                         <div className="text-blue-600">
-                          📅 Local time:{' '}
+                          📅 Your local time:{' '}
                           {new Date(
                             `${scheduledDate}T${scheduledTime}`
                           ).toLocaleString()}
                         </div>
                         <div className="text-green-600">
-                          🌍 UTC time:{' '}
+                          🌍 Server time (UTC):{' '}
                           {new Date(
                             new Date(
                               `${scheduledDate}T${scheduledTime}`
-                            ).getTime() -
+                            ).getTime() +
                               new Date().getTimezoneOffset() * 60000
                           )
                             .toISOString()
@@ -1816,7 +1816,10 @@ export default function Home() {
                           UTC
                         </div>
                         <div className="text-xs text-gray-500">
-                          ℹ️ Message will be sent based on server time (UTC)
+                          ℹ️ Message will be sent at the server time shown above
+                          <br />
+                          🌐 Your timezone offset:{' '}
+                          {new Date().getTimezoneOffset()} minutes from UTC
                         </div>
                       </div>
                     )}
