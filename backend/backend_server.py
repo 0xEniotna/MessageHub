@@ -953,6 +953,8 @@ def scheduler_status():
         
         return jsonify({
             'scheduler_running': message_processor.running if message_processor else False,
+            'server_time': datetime.now().isoformat(),
+            'server_timezone': 'UTC' if datetime.now().utcoffset() is None else str(datetime.now().utcoffset()),
             'stats': {
                 'pending_messages': pending_count,
                 'sent_messages': sent_count,
@@ -965,6 +967,61 @@ def scheduler_status():
         
     except Exception as e:
         logger.error(f"Error getting scheduler status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scheduler/debug', methods=['GET'])
+def scheduler_debug():
+    """Debug endpoint to check scheduled messages and timing"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'No authorization header'}), 401
+    
+    token = auth_header.split(' ')[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    try:
+        messages = db_manager.get_scheduled_messages(phone_number)
+        now = datetime.now()
+        
+        debug_info = {
+            'server_time': now.isoformat(),
+            'server_timezone': 'UTC',
+            'messages': []
+        }
+        
+        for message in messages:
+            if message['status'] == 'pending':
+                try:
+                    scheduled_for_str = message['scheduled_for']
+                    scheduled_time = datetime.fromisoformat(scheduled_for_str.replace('Z', '+00:00'))
+                    if scheduled_time.tzinfo:
+                        scheduled_time = scheduled_time.replace(tzinfo=None)
+                    
+                    time_diff = (scheduled_time - now).total_seconds()
+                    
+                    debug_info['messages'].append({
+                        'id': message['id'],
+                        'scheduled_for_original': scheduled_for_str,
+                        'scheduled_for_parsed': scheduled_time.isoformat(),
+                        'time_until_due_seconds': int(time_diff),
+                        'time_until_due_minutes': int(time_diff / 60),
+                        'is_due': scheduled_time <= now,
+                        'recipients_count': len(message['recipients']) if isinstance(message['recipients'], list) else 'unknown'
+                    })
+                except Exception as e:
+                    debug_info['messages'].append({
+                        'id': message['id'],
+                        'error': f"Failed to parse: {str(e)}",
+                        'scheduled_for_original': message['scheduled_for']
+                    })
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        logger.error(f"Error in scheduler debug: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 class ScheduledMessageProcessor:
@@ -1011,18 +1068,39 @@ class ScheduledMessageProcessor:
             messages = self.db_manager.get_scheduled_messages()
             now = datetime.now()
             
+            logger.info(f"🔍 Checking {len(messages)} scheduled messages. Server time: {now.isoformat()}")
+            
             for message in messages:
                 if message['status'] != 'pending':
                     continue
                 
                 # Parse scheduled time
                 try:
-                    scheduled_time = datetime.fromisoformat(message['scheduled_for'].replace('Z', '+00:00'))
-                    # Remove timezone info for comparison (assuming local time)
-                    if scheduled_time.tzinfo:
-                        scheduled_time = scheduled_time.replace(tzinfo=None)
+                    scheduled_for_str = message['scheduled_for']
+                    logger.info(f"📅 Processing message {message['id']}: scheduled_for='{scheduled_for_str}'")
+                    
+                    # Handle different time formats
+                    if scheduled_for_str.endswith('Z'):
+                        # UTC time format
+                        scheduled_time = datetime.fromisoformat(scheduled_for_str.replace('Z', '+00:00'))
+                        if scheduled_time.tzinfo:
+                            # Convert to server local time (UTC) for comparison
+                            scheduled_time = scheduled_time.replace(tzinfo=None)
+                    elif '+' in scheduled_for_str or scheduled_for_str.count('-') > 2:
+                        # Time with timezone info
+                        scheduled_time = datetime.fromisoformat(scheduled_for_str)
+                        if scheduled_time.tzinfo:
+                            # Convert to UTC for comparison with server time
+                            scheduled_time = scheduled_time.utctimetuple()
+                            scheduled_time = datetime(*scheduled_time[:6])
+                    else:
+                        # Assume it's already in server timezone
+                        scheduled_time = datetime.fromisoformat(scheduled_for_str)
+                    
+                    logger.info(f"⏰ Message {message['id']}: scheduled={scheduled_time.isoformat()}, now={now.isoformat()}")
+                    
                 except ValueError as e:
-                    logger.error(f"Invalid date format for message {message['id']}: {message['scheduled_for']}")
+                    logger.error(f"Invalid date format for message {message['id']}: {message['scheduled_for']} - {str(e)}")
                     self.db_manager.update_message_status(message['id'], 'failed', now.isoformat())
                     continue
                 
@@ -1030,6 +1108,9 @@ class ScheduledMessageProcessor:
                 if scheduled_time <= now:
                     logger.info(f"🚀 Processing scheduled message {message['id']} (due: {scheduled_time})")
                     self._execute_message(message)
+                else:
+                    time_until_due = (scheduled_time - now).total_seconds()
+                    logger.info(f"⏳ Message {message['id']} not yet due. Time remaining: {int(time_until_due/60)} minutes")
         
         except Exception as e:
             logger.error(f"Error processing due messages: {str(e)}")
