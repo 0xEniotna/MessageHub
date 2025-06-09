@@ -533,59 +533,31 @@ export default function ComposeMessage({
             (!selectedGroupList && selectedChats.length === 0) ||
             (!message.trim() && selectedImages.length === 0)
           }
-          className="w-full bg-telegram-600 hover:bg-telegram-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl disabled:shadow-none"
+          className="retro-button w-full p-4 text-black text-lg font-bold border-4 border-black bg-gradient-to-r from-yellow-300 to-green-300 hover:from-yellow-400 hover:to-green-400 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl disabled:shadow-none"
+          style={{
+            fontFamily: 'Impact, Arial Black, sans-serif',
+            textShadow: '1px 1px 0px #fff',
+          }}
         >
           {loading ? (
             <>
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              <span>Sending...</span>
+              <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-black mr-2"></div>
+              ⏳ PROCESSING... ⏳
             </>
           ) : isScheduled ? (
-            <>
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span>
-                Schedule Message
-                {selectedImages.length > 0 &&
-                  ` with ${selectedImages.length} image${
-                    selectedImages.length > 1 ? 's' : ''
-                  }`}
-              </span>
-            </>
+            selectedImages.length > 0 ? (
+              `🚀 📅 SCHEDULE MESSAGE WITH ${selectedImages.length} IMAGE${
+                selectedImages.length > 1 ? 'S' : ''
+              } 📅 🚀`
+            ) : (
+              '🚀 📅 SCHEDULE MESSAGE 📅 🚀'
+            )
+          ) : selectedImages.length > 0 ? (
+            `🚀 📤 SEND MESSAGE WITH ${selectedImages.length} IMAGE${
+              selectedImages.length > 1 ? 'S' : ''
+            } 📤 🚀`
           ) : (
-            <>
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                />
-              </svg>
-              <span>
-                Send Message
-                {selectedImages.length > 0 &&
-                  ` with ${selectedImages.length} image${
-                    selectedImages.length > 1 ? 's' : ''
-                  }`}
-              </span>
-            </>
+            '🚀 📤 SEND MESSAGE 📤 🚀'
           )}
         </button>
       </form>
