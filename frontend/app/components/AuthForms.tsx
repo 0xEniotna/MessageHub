@@ -252,6 +252,75 @@ export default function AuthForms({
             </div>
           </div>
 
+          {/* Important Notice - Get Credentials First */}
+          <div
+            className="retro-border p-4 max-w-2xl w-full mb-6"
+            style={{
+              background: 'linear-gradient(45deg, #ffff00, #ff9900)',
+              border: '4px solid #ff0000',
+              boxShadow: '4px 4px 0px #cc0000',
+            }}
+          >
+            <div className="text-center">
+              <div
+                className="text-lg font-bold mb-2"
+                style={{
+                  fontFamily: 'Impact, Arial Black, sans-serif',
+                  color: '#000080',
+                  textShadow: '2px 2px 0px #fff',
+                  animation: 'blink 1s infinite',
+                }}
+              >
+                ⚠️ IMPORTANT: GET API CREDENTIALS FIRST! ⚠️
+              </div>
+              <div
+                className="text-sm mb-3"
+                style={{
+                  fontFamily: 'Arial Black, sans-serif',
+                  color: '#000080',
+                  fontWeight: 'bold',
+                }}
+              >
+                You MUST create a Telegram app to get your API credentials
+                before using MessageHub!
+              </div>
+              <div
+                className="text-base font-bold mb-2"
+                style={{
+                  fontFamily: 'Courier New, monospace',
+                  color: '#ff0000',
+                }}
+              >
+                📍 STEP 1: Visit this website first:
+              </div>
+              <a
+                href="https://my.telegram.org/apps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="retro-button px-4 py-2 text-black text-base inline-block"
+                style={{
+                  background: 'linear-gradient(45deg, #00ff00, #99ff99)',
+                  fontFamily: 'Impact, Arial Black, sans-serif',
+                  fontSize: '16px',
+                  textDecoration: 'none',
+                  border: '3px solid #000',
+                }}
+              >
+                🚀 GET API CREDENTIALS 🚀
+              </a>
+              <div
+                className="text-xs mt-2"
+                style={{
+                  fontFamily: 'Verdana, sans-serif',
+                  color: '#000080',
+                  fontWeight: 'bold',
+                }}
+              >
+                📝 Create an app → Copy API ID & API Hash → Return here!
+              </div>
+            </div>
+          </div>
+
           {/* Main content area with credentials and privacy */}
           <div className="flex flex-col lg:flex-row gap-6 max-w-5xl w-full">
             {/* Credentials Box */}
