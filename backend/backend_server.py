@@ -29,6 +29,7 @@ from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import tempfile
 from werkzeug.utils import secure_filename
+import traceback
 
 # Configure logging first
 import logging
@@ -694,6 +695,13 @@ def get_auth_token(request) -> tuple:
     
     return phone_number, None
 
+# Add this function after the imports
+def log_exception(logger, message: str, exception: Exception):
+    """Log exception with full traceback information"""
+    logger.error(f"{message}: {str(exception)}")
+    logger.error(f"Exception type: {type(exception).__name__}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+
 # API Routes
 
 @app.route('/api/health', methods=['GET'])
@@ -726,10 +734,10 @@ def login():
         return jsonify(result)
         
     except Exception as e:
-        logger.error(f"Login error: {str(e)}")
+        log_exception(logger, "Login error", e)
         return jsonify({
             'success': False,
-            'message': f'Failed to connect: {str(e)}'
+            'message': f'Failed to connect: {str(e) if str(e) else "Unknown error occurred"}'
         }), 500
 
 @app.route('/api/auth/verify', methods=['POST'])
@@ -753,10 +761,10 @@ def verify_code():
         return jsonify(result)
         
     except Exception as e:
-        logger.error(f"Verification error: {str(e)}")
+        log_exception(logger, "Verification error", e)
         return jsonify({
             'success': False,
-            'message': f'Verification failed: {str(e)}'
+            'message': f'Verification failed: {str(e) if str(e) else "Unknown error occurred"}'
         }), 500
 
 @app.route('/api/auth/status', methods=['GET'])
@@ -795,8 +803,8 @@ def get_chats():
         return jsonify({'chats': chats})
         
     except Exception as e:
-        logger.error(f"Error getting chats: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error getting chats", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to get chats"}), 500
 
 @app.route('/api/messages/send', methods=['POST'])
 def send_message():
@@ -868,8 +876,8 @@ def send_message():
             })
             
     except Exception as e:
-        logger.error(f"Error sending message: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error sending message", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to send message"}), 500
 
 @app.route('/api/messages/send-media', methods=['POST'])
 @rate_limit()
@@ -958,8 +966,8 @@ def send_message_with_media():
             })
             
     except Exception as e:
-        logger.error(f"Error sending message with media: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error sending message with media", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to send message with media"}), 500
 
 @app.route('/api/messages/scheduled', methods=['GET'])
 def get_scheduled_messages():
@@ -973,8 +981,8 @@ def get_scheduled_messages():
         return jsonify({'messages': messages})
         
     except Exception as e:
-        logger.error(f"Error getting scheduled messages: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error getting scheduled messages", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to get scheduled messages"}), 500
 
 @app.route('/api/messages/execute/<int:message_id>', methods=['POST'])
 def execute_scheduled_message(message_id):
@@ -1020,9 +1028,9 @@ def execute_scheduled_message(message_id):
         })
         
     except Exception as e:
-        logger.error(f"Error executing message: {str(e)}")
+        log_exception(logger, "Error executing message", e)
         db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e) if str(e) else "Failed to execute message"}), 500
 
 @app.route('/api/messages/<int:message_id>', methods=['DELETE'])
 def delete_scheduled_message(message_id):
@@ -1045,8 +1053,8 @@ def delete_scheduled_message(message_id):
             return jsonify({'error': 'Message not found'}), 404
             
     except Exception as e:
-        logger.error(f"Error deleting message: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error deleting message", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to delete message"}), 500
 
 @app.route('/api/scheduler/status', methods=['GET'])
 def scheduler_status():
@@ -1083,8 +1091,8 @@ def scheduler_status():
         })
         
     except Exception as e:
-        logger.error(f"Error getting scheduler status: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error getting scheduler status", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to get scheduler status"}), 500
 
 @app.route('/api/scheduler/debug', methods=['GET'])
 def scheduler_debug():
@@ -1138,8 +1146,8 @@ def scheduler_debug():
         return jsonify(debug_info)
         
     except Exception as e:
-        logger.error(f"Error in scheduler debug: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_exception(logger, "Error in scheduler debug", e)
+        return jsonify({'error': str(e) if str(e) else "Failed to get debug info"}), 500
 
 @app.route('/api/timezone-info', methods=['GET'])
 def timezone_info():
@@ -1188,7 +1196,7 @@ class ScheduledMessageProcessor:
                 # Sleep for 30 seconds (check twice per minute for better accuracy)
                 time.sleep(30)
             except Exception as e:
-                logger.error(f"Error in scheduler: {str(e)}")
+                log_exception(logger, "Error in scheduler", e)
                 time.sleep(60)  # Wait longer on error
     
     def _process_due_messages(self):
@@ -1255,7 +1263,7 @@ class ScheduledMessageProcessor:
                     logger.info(f"⏰ Message {message['id']}: scheduled={scheduled_time.isoformat()}, now={now.isoformat()}")
                     
                 except ValueError as e:
-                    logger.error(f"Invalid date format for message {message['id']}: {message['scheduled_for']} - {str(e)}")
+                    log_exception(logger, f"Invalid date format for message {message['id']}: {message['scheduled_for']}", e)
                     self.db_manager.update_message_status(message['id'], 'failed', now.isoformat())
                     continue
                 
@@ -1268,7 +1276,7 @@ class ScheduledMessageProcessor:
                     logger.info(f"⏳ Message {message['id']} not yet due. Time remaining: {int(time_until_due/60)} minutes")
         
         except Exception as e:
-            logger.error(f"Error processing due messages: {str(e)}")
+            log_exception(logger, "Error processing due messages", e)
     
     def _execute_message(self, message):
         """Execute a single scheduled message"""
@@ -1285,8 +1293,8 @@ class ScheduledMessageProcessor:
             # Parse recipients
             try:
                 recipients = json.loads(message['recipients']) if isinstance(message['recipients'], str) else message['recipients']
-            except json.JSONDecodeError:
-                logger.error(f"Invalid recipients format for message {message_id}")
+            except json.JSONDecodeError as e:
+                log_exception(logger, f"Invalid recipients format for message {message_id}", e)
                 self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
                 return
             
@@ -1314,7 +1322,7 @@ class ScheduledMessageProcessor:
             self.db_manager.update_message_status(message_id, status, datetime.now().isoformat())
             
         except Exception as e:
-            logger.error(f"❌ Error executing scheduled message {message_id}: {str(e)}")
+            log_exception(logger, f"Error executing scheduled message {message_id}", e)
             self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
 
 if __name__ == '__main__':
