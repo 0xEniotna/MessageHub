@@ -533,28 +533,60 @@ export default function ComposeMessage({
             (!selectedGroupList && selectedChats.length === 0) ||
             (!message.trim() && selectedImages.length === 0)
           }
-          className="retro-button w-full p-4 text-black text-lg"
-          style={{
-            fontFamily: 'Impact, Arial Black, sans-serif',
-            opacity:
-              loading ||
-              (!selectedGroupList && selectedChats.length === 0) ||
-              (!message.trim() && selectedImages.length === 0)
-                ? 0.5
-                : 1,
-          }}
+          className="w-full bg-telegram-600 hover:bg-telegram-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl disabled:shadow-none"
         >
-          🚀{' '}
-          {loading
-            ? '⏳ PROCESSING...'
-            : isScheduled
-            ? selectedImages.length > 0
-              ? `📅 SCHEDULE MESSAGE WITH ${selectedImages.length} IMAGE(S)`
-              : '📅 SCHEDULE MESSAGE'
-            : selectedImages.length > 0
-            ? `📤 SEND MESSAGE WITH ${selectedImages.length} IMAGE(S)`
-            : '📤 SEND MESSAGE'}{' '}
-          🚀
+          {loading ? (
+            <>
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              <span>Sending...</span>
+            </>
+          ) : isScheduled ? (
+            <>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>
+                Schedule Message
+                {selectedImages.length > 0 &&
+                  ` with ${selectedImages.length} image${
+                    selectedImages.length > 1 ? 's' : ''
+                  }`}
+              </span>
+            </>
+          ) : (
+            <>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+              <span>
+                Send Message
+                {selectedImages.length > 0 &&
+                  ` with ${selectedImages.length} image${
+                    selectedImages.length > 1 ? 's' : ''
+                  }`}
+              </span>
+            </>
+          )}
         </button>
       </form>
     </div>
