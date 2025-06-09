@@ -7,8 +7,8 @@ import os
 bind = "127.0.0.1:8000"  # Bind to localhost since nginx will proxy
 backlog = 2048
 
-# Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+# Worker processes - FIXED: Use single worker to avoid Telethon session conflicts
+workers = 1  # Changed from multiprocessing.cpu_count() * 2 + 1
 max_requests = 1000
 max_requests_jitter = 50
 preload_app = True

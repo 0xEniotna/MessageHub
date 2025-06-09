@@ -164,10 +164,10 @@ class AsyncExecutor:
         
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try:
-            return future.result(timeout=60)  # Reduced from 120 to 30 seconds
+            return future.result(timeout=120)  # Increased from 60 to 120 seconds for Telegram connections
         except concurrent.futures.TimeoutError:
             future.cancel()
-            logger.error("Async operation timed out after 60 seconds")
+            logger.error("Async operation timed out after 120 seconds")
             raise TimeoutError("Operation timed out - check your internet connection and Telegram API availability")
     
     def close(self):
@@ -353,15 +353,17 @@ class TelegramManager:
     async def create_client(self, api_id: str, api_hash: str, phone_number: str) -> Dict:
         """Create and authenticate Telegram client"""
         try:
-            session_file = f"{SESSIONS_DIR}/{phone_number}.session"
+            # Use worker-specific session file to avoid conflicts
+            worker_id = os.getpid()
+            session_file = f"{SESSIONS_DIR}/{phone_number}_worker_{worker_id}.session"
             client = TelegramClient(session_file, int(api_id), api_hash)
             
             # Add timeout to prevent hanging on connection
-            await asyncio.wait_for(client.connect(), timeout=30.0)
+            await asyncio.wait_for(client.connect(), timeout=60.0)
             
             if not await asyncio.wait_for(client.is_user_authorized(), timeout=30.0):
                 # Send verification code with timeout
-                result = await asyncio.wait_for(client.send_code_request(phone_number), timeout=30.0)
+                result = await asyncio.wait_for(client.send_code_request(phone_number), timeout=60.0)
                 
                 # Store pending verification info
                 self.pending_codes[phone_number] = {
@@ -418,10 +420,10 @@ class TelegramManager:
             
             if password:
                 # Two-factor authentication with timeout
-                await asyncio.wait_for(client.sign_in(password=password), timeout=30.0)
+                await asyncio.wait_for(client.sign_in(password=password), timeout=60.0)
             else:
                 # Regular code verification with timeout
-                await asyncio.wait_for(client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash']), timeout=30.0)
+                await asyncio.wait_for(client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash']), timeout=60.0)
             
             # Successfully authenticated
             self.clients[phone_number] = client
@@ -465,7 +467,7 @@ class TelegramManager:
         
         client = self.clients[phone_number]
         # Add timeout to prevent hanging when fetching dialogs
-        dialogs = await asyncio.wait_for(client.get_dialogs(), timeout=30.0)
+        dialogs = await asyncio.wait_for(client.get_dialogs(), timeout=60.0)
         
         chats = []
         for dialog in dialogs:
