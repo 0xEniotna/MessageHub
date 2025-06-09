@@ -29,6 +29,9 @@ from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import tempfile
 from werkzeug.utils import secure_filename
+import shutil
+from telethon.tl.types import InputPeerUser, InputPeerChat, InputPeerChannel
+from io import BytesIO
 
 # Configure logging first
 import logging
@@ -192,9 +195,18 @@ class DatabaseManager:
                     scheduled_for TEXT NOT NULL,
                     status TEXT DEFAULT 'pending',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    executed_at TEXT NULL
+                    executed_at TEXT NULL,
+                    media_files TEXT NULL
                 )
             ''')
+            
+            # Add media_files column if it doesn't exist (migration for existing databases)
+            try:
+                conn.execute('ALTER TABLE scheduled_messages ADD COLUMN media_files TEXT NULL')
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
             
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -228,6 +240,26 @@ class DatabaseManager:
             conn.commit()
             return cursor.lastrowid
     
+    def save_scheduled_message_with_media(self, phone_number: str, recipients: List, message: str, scheduled_for: str, media_files: List[Dict]) -> int:
+        """Save a scheduled message with media files"""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                INSERT INTO scheduled_messages (phone_number, recipients, message, scheduled_for, media_files)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (phone_number, json.dumps(recipients), message, scheduled_for, json.dumps(media_files)))
+            conn.commit()
+            return cursor.lastrowid
+    
+    def update_scheduled_message_media(self, message_id: int, media_files: List[Dict]):
+        """Update media files info for a scheduled message"""
+        with self.get_connection() as conn:
+            conn.execute('''
+                UPDATE scheduled_messages 
+                SET media_files = ?
+                WHERE id = ?
+            ''', (json.dumps(media_files), message_id))
+            conn.commit()
+    
     def get_scheduled_messages(self, phone_number: Optional[str] = None) -> List[Dict]:
         """Get scheduled messages"""
         with self.get_connection() as conn:
@@ -243,6 +275,13 @@ class DatabaseManager:
             
             messages = []
             for row in cursor.fetchall():
+                media_files = None
+                if row['media_files']:
+                    try:
+                        media_files = json.loads(row['media_files'])
+                    except (json.JSONDecodeError, TypeError):
+                        media_files = None
+                
                 messages.append({
                     'id': str(row['id']),
                     'phone_number': row['phone_number'],
@@ -251,7 +290,8 @@ class DatabaseManager:
                     'scheduled_for': row['scheduled_for'],
                     'status': row['status'],
                     'created_at': row['created_at'],
-                    'executed_at': row['executed_at']
+                    'executed_at': row['executed_at'],
+                    'media_files': media_files
                 })
             return messages
     
@@ -932,8 +972,58 @@ def send_message_with_media():
         logger.info(f"Sending message with {len(image_files)} images to {len(recipients)} recipients")
         
         if schedule_for:
-            # Note: Scheduling with media is not implemented yet
-            return jsonify({'error': 'Scheduling messages with media is not yet supported'}), 400
+            # Handle timezone conversion for scheduled messages with media
+            timezone_offset = request.form.get('timezone_offset')
+            if timezone_offset is not None:
+                try:
+                    timezone_offset = int(timezone_offset)
+                    # Convert client time to UTC
+                    local_time = datetime.fromisoformat(schedule_for)
+                    utc_time = local_time + timedelta(minutes=timezone_offset)
+                    schedule_for_utc = utc_time.isoformat() + 'Z'
+                    logger.info(f"🌍 Timezone conversion for media message: {schedule_for} (local) → {schedule_for_utc} (UTC), offset: {timezone_offset}min")
+                    schedule_for = schedule_for_utc
+                except Exception as e:
+                    logger.error(f"Timezone conversion error for media message: {str(e)}")
+            
+            # Create a temporary message ID for file organization
+            temp_message_id = int(time.time() * 1000)  # Use timestamp as temp ID
+            
+            # Save media files to disk
+            media_files_info = []
+            if image_files:
+                media_files_info = save_media_files_to_disk(image_files, temp_message_id)
+            
+            # Save scheduled message with media
+            message_id = db_manager.save_scheduled_message_with_media(
+                phone_number, recipients, message, schedule_for, media_files_info
+            )
+            
+            # Rename the media directory to use the actual message ID
+            if media_files_info:
+                old_media_dir = f"data/scheduled_media/{temp_message_id}"
+                new_media_dir = f"data/scheduled_media/{message_id}"
+                
+                if os.path.exists(old_media_dir):
+                    os.makedirs("data/scheduled_media", exist_ok=True)
+                    shutil.move(old_media_dir, new_media_dir)
+                    
+                    # Update the file paths in the database
+                    for file_info in media_files_info:
+                        file_info['saved_path'] = file_info['saved_path'].replace(
+                            f"scheduled_media/{temp_message_id}", 
+                            f"scheduled_media/{message_id}"
+                        )
+                    
+                    # Update the database with correct paths
+                    db_manager.update_scheduled_message_media(message_id, media_files_info)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Message with media scheduled successfully',
+                'scheduled_id': message_id,
+                'media_count': len(image_files)
+            })
         else:
             # Send immediately
             if image_files:
@@ -1001,11 +1091,39 @@ def execute_scheduled_message(message_id):
             return jsonify({'error': 'Message already processed'}), 400
         
         # Execute the message
-        results = run_async(telegram_manager.send_message_to_recipients(
-            phone_number, 
-            message['recipients'], 
-            message['message']
-        ))
+        media_files_info = message.get('media_files')
+        has_media = media_files_info and len(media_files_info) > 0
+        
+        if has_media:
+            # Load media files from disk and send with media
+            try:
+                loaded_media_files = load_media_files_from_disk(media_files_info)
+                if not loaded_media_files:
+                    logger.error(f"Failed to load media files for manual execution of message {message_id}")
+                    db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                    return jsonify({'error': 'Failed to load media files'}), 500
+                
+                results = run_async(telegram_manager.send_message_with_media_to_recipients(
+                    phone_number, 
+                    message['recipients'], 
+                    message['message'],
+                    loaded_media_files
+                ))
+                
+                # Clean up media files after send
+                cleanup_media_files(media_files_info)
+                
+            except Exception as e:
+                logger.error(f"Error loading/sending media for manual execution of message {message_id}: {str(e)}")
+                db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                return jsonify({'error': f'Media error: {str(e)}'}), 500
+        else:
+            # Send text-only message
+            results = run_async(telegram_manager.send_message_to_recipients(
+                phone_number, 
+                message['recipients'], 
+                message['message']
+            ))
         
         # Update status
         sent_count = sum(1 for r in results if r['success'])
@@ -1016,7 +1134,8 @@ def execute_scheduled_message(message_id):
             'success': True,
             'sent_count': sent_count,
             'failed_count': len(results) - sent_count,
-            'results': results
+            'results': results,
+            'media_count': len(media_files_info) if media_files_info else 0
         })
         
     except Exception as e:
@@ -1038,6 +1157,23 @@ def delete_scheduled_message(message_id):
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
+        # Get the message to check for media files before deletion
+        messages = db_manager.get_scheduled_messages(phone_number)
+        message = next((m for m in messages if m['id'] == str(message_id)), None)
+        
+        if not message:
+            return jsonify({'error': 'Message not found'}), 404
+        
+        # Clean up media files if they exist
+        media_files_info = message.get('media_files')
+        if media_files_info:
+            try:
+                cleanup_media_files(media_files_info)
+                logger.info(f"Cleaned up media files for deleted message {message_id}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup media files for deleted message {message_id}: {str(e)}")
+        
+        # Delete the message from database
         success = db_manager.delete_scheduled_message(message_id, phone_number)
         if success:
             return jsonify({'success': True})
@@ -1290,15 +1426,44 @@ class ScheduledMessageProcessor:
                 self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
                 return
             
-            # Send the message
-            logger.info(f"📤 Sending scheduled message {message_id} to {len(recipients)} recipients")
+            # Check if message has media files
+            media_files_info = message.get('media_files')
+            has_media = media_files_info and len(media_files_info) > 0
             
-            # Use the async executor to run the coroutine
-            results = run_async(self.telegram_manager.send_message_to_recipients(
-                phone_number, 
-                recipients, 
-                message['message']
-            ))
+            # Send the message
+            logger.info(f"📤 Sending scheduled message {message_id} to {len(recipients)} recipients{'with media' if has_media else ''}")
+            
+            if has_media:
+                # Load media files from disk
+                try:
+                    loaded_media_files = load_media_files_from_disk(media_files_info)
+                    if not loaded_media_files:
+                        logger.error(f"Failed to load media files for message {message_id}")
+                        self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                        return
+                    
+                    # Send message with media
+                    results = run_async(self.telegram_manager.send_message_with_media_to_recipients(
+                        phone_number, 
+                        recipients, 
+                        message['message'],
+                        loaded_media_files
+                    ))
+                    
+                    # Clean up media files after successful send
+                    cleanup_media_files(media_files_info)
+                    
+                except Exception as e:
+                    logger.error(f"Error loading/sending media for message {message_id}: {str(e)}")
+                    self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+                    return
+            else:
+                # Send text-only message
+                results = run_async(self.telegram_manager.send_message_to_recipients(
+                    phone_number, 
+                    recipients, 
+                    message['message']
+                ))
             
             # Update status based on results
             sent_count = sum(1 for r in results if r['success'])
@@ -1306,7 +1471,7 @@ class ScheduledMessageProcessor:
             
             if sent_count > 0:
                 status = 'sent'
-                logger.info(f"✅ Scheduled message {message_id} sent successfully ({sent_count}/{len(results)})")
+                logger.info(f"✅ Scheduled message {message_id} sent successfully ({sent_count}/{len(results)}){'with media' if has_media else ''}")
             else:
                 status = 'failed'
                 logger.error(f"❌ Scheduled message {message_id} failed to send to all recipients")
@@ -1316,10 +1481,88 @@ class ScheduledMessageProcessor:
         except Exception as e:
             logger.error(f"❌ Error executing scheduled message {message_id}: {str(e)}")
             self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
+            
+            # Clean up media files on error
+            if message.get('media_files'):
+                try:
+                    cleanup_media_files(message['media_files'])
+                except Exception as cleanup_error:
+                    logger.error(f"Error during media cleanup for failed message {message_id}: {str(cleanup_error)}")
+
+def save_media_files_to_disk(image_files: List, message_id: int) -> List[Dict]:
+    """Save uploaded media files to disk and return file info"""
+    media_dir = f"data/scheduled_media/{message_id}"
+    os.makedirs(media_dir, exist_ok=True)
+    
+    saved_files = []
+    for i, image_file in enumerate(image_files):
+        # Generate safe filename
+        original_filename = image_file.filename
+        file_ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'jpg'
+        safe_filename = f"media_{i}_{int(time.time())}.{file_ext}"
+        file_path = os.path.join(media_dir, safe_filename)
+        
+        # Save file
+        image_file.seek(0)  # Reset file pointer
+        with open(file_path, 'wb') as f:
+            shutil.copyfileobj(image_file, f)
+        
+        saved_files.append({
+            'original_filename': original_filename,
+            'saved_path': file_path,
+            'file_size': os.path.getsize(file_path),
+            'content_type': image_file.content_type
+        })
+    
+    return saved_files
+
+def load_media_files_from_disk(media_files_info: List[Dict]) -> List:
+    """Load media files from disk into memory for sending"""
+    loaded_files = []
+    
+    for file_info in media_files_info:
+        file_path = file_info['saved_path']
+        if os.path.exists(file_path):
+            # Create a file-like object with the content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Create a file-like object that mimics the original upload
+            file_obj = BytesIO(file_content)
+            file_obj.filename = file_info['original_filename']
+            file_obj.content_type = file_info.get('content_type', 'image/jpeg')
+            
+            loaded_files.append(file_obj)
+        else:
+            logger.warning(f"Media file not found: {file_path}")
+    
+    return loaded_files
+
+def cleanup_media_files(media_files_info: List[Dict]):
+    """Clean up media files from disk after successful send or on error"""
+    for file_info in media_files_info:
+        file_path = file_info['saved_path']
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Cleaned up media file: {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup media file {file_path}: {str(e)}")
+    
+    # Try to remove the directory if it's empty
+    try:
+        if media_files_info:
+            media_dir = os.path.dirname(media_files_info[0]['saved_path'])
+            if os.path.exists(media_dir) and not os.listdir(media_dir):
+                os.rmdir(media_dir)
+    except Exception as e:
+        logger.warning(f"Failed to cleanup media directory: {str(e)}")
 
 if __name__ == '__main__':
     # Create necessary directories
     os.makedirs(SESSIONS_DIR, exist_ok=True)
+    os.makedirs("data", exist_ok=True)
+    os.makedirs("data/scheduled_media", exist_ok=True)
     
     # Initialize global managers
     db_manager = DatabaseManager(DATABASE_FILE)
