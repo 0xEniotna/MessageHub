@@ -351,11 +351,12 @@ class TelegramManager:
             session_file = f"{SESSIONS_DIR}/{phone_number}.session"
             client = TelegramClient(session_file, int(api_id), api_hash)
             
-            await client.connect()
+            # Add timeout to prevent hanging on connection
+            await asyncio.wait_for(client.connect(), timeout=15.0)
             
-            if not await client.is_user_authorized():
-                # Send verification code
-                result = await client.send_code_request(phone_number)
+            if not await asyncio.wait_for(client.is_user_authorized(), timeout=10.0):
+                # Send verification code with timeout
+                result = await asyncio.wait_for(client.send_code_request(phone_number), timeout=15.0)
                 
                 # Store pending verification info
                 self.pending_codes[phone_number] = {
@@ -381,6 +382,11 @@ class TelegramManager:
                     'message': 'Successfully connected to Telegram'
                 }
                 
+        except asyncio.TimeoutError:
+            return {
+                'success': False,
+                'message': 'Connection timeout. Please check your internet connection and try again.'
+            }
         except PhoneNumberInvalidError:
             return {
                 'success': False,
@@ -406,11 +412,11 @@ class TelegramManager:
             client = pending['client']
             
             if password:
-                # Two-factor authentication
-                await client.sign_in(password=password)
+                # Two-factor authentication with timeout
+                await asyncio.wait_for(client.sign_in(password=password), timeout=15.0)
             else:
-                # Regular code verification
-                await client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash'])
+                # Regular code verification with timeout
+                await asyncio.wait_for(client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash']), timeout=15.0)
             
             # Successfully authenticated
             self.clients[phone_number] = client
@@ -424,6 +430,11 @@ class TelegramManager:
                 'message': 'Successfully authenticated with Telegram'
             }
             
+        except asyncio.TimeoutError:
+            return {
+                'success': False,
+                'message': 'Authentication timeout. Please try again.'
+            }
         except SessionPasswordNeededError:
             return {
                 'success': False,
@@ -448,7 +459,8 @@ class TelegramManager:
             raise Exception("Client not connected")
         
         client = self.clients[phone_number]
-        dialogs = await client.get_dialogs()
+        # Add timeout to prevent hanging when fetching dialogs
+        dialogs = await asyncio.wait_for(client.get_dialogs(), timeout=20.0)
         
         chats = []
         for dialog in dialogs:

@@ -2,6 +2,10 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Timeout configuration
+const DEFAULT_TIMEOUT = 60000; // 60 seconds
+const AUTH_TIMEOUT = 90000; // 90 seconds for auth operations (they take longer)
+
 interface ApiResponse<T = any> {
   success?: boolean;
   data?: T;
@@ -21,9 +25,16 @@ class ApiClient {
     }
   }
 
+  private createAbortController(timeout: number): AbortController {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), timeout);
+    return controller;
+  }
+
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeout: number = DEFAULT_TIMEOUT
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const headers: Record<string, string> = {
@@ -35,22 +46,37 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.sessionToken}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    const controller = this.createAbortController(timeout);
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API Error: ${response.status} - ${error}`);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`API Error: ${response.status} - ${error}`);
+      }
+
+      return response.json();
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error(
+          `Request timeout after ${
+            timeout / 1000
+          } seconds - check your internet connection and server availability`
+        );
+      }
+      throw error;
     }
-
-    return response.json();
   }
 
   private async requestFormData<T>(
     endpoint: string,
-    formData: FormData
+    formData: FormData,
+    timeout: number = DEFAULT_TIMEOUT
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const headers: Record<string, string> = {};
@@ -59,30 +85,48 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.sessionToken}`;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    const controller = this.createAbortController(timeout);
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API Error: ${response.status} - ${error}`);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`API Error: ${response.status} - ${error}`);
+      }
+
+      return response.json();
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error(
+          `Request timeout after ${
+            timeout / 1000
+          } seconds - check your internet connection and server availability`
+        );
+      }
+      throw error;
     }
-
-    return response.json();
   }
 
-  // Authentication
+  // Authentication (uses longer timeout)
   async login(credentials: {
     api_id: string;
     api_hash: string;
     phone_number: string;
   }) {
-    const response = await this.request<any>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    });
+    const response = await this.request<any>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      },
+      AUTH_TIMEOUT
+    );
 
     if (response.session_token) {
       this.sessionToken = response.session_token;
@@ -99,10 +143,14 @@ class ApiClient {
     code: string;
     password?: string;
   }) {
-    const response = await this.request<any>('/api/auth/verify', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    const response = await this.request<any>(
+      '/api/auth/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      AUTH_TIMEOUT
+    );
 
     if (response.session_token) {
       this.sessionToken = response.session_token;
