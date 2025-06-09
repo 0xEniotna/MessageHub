@@ -29,7 +29,6 @@ from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import tempfile
 from werkzeug.utils import secure_filename
-import traceback
 
 # Configure logging first
 import logging
@@ -164,12 +163,7 @@ class AsyncExecutor:
             raise RuntimeError("Event loop not initialized")
         
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        try:
-            return future.result(timeout=30)  # Reduced from 120 to 30 seconds
-        except concurrent.futures.TimeoutError:
-            future.cancel()
-            logger.error("Async operation timed out after 30 seconds")
-            raise TimeoutError("Operation timed out - check your internet connection and Telegram API availability")
+        return future.result(timeout=30)  # 30 second timeout
     
     def close(self):
         """Clean shutdown of the executor"""
@@ -357,12 +351,11 @@ class TelegramManager:
             session_file = f"{SESSIONS_DIR}/{phone_number}.session"
             client = TelegramClient(session_file, int(api_id), api_hash)
             
-            # Add timeout to prevent hanging on connection
-            await asyncio.wait_for(client.connect(), timeout=15.0)
+            await client.connect()
             
-            if not await asyncio.wait_for(client.is_user_authorized(), timeout=10.0):
-                # Send verification code with timeout
-                result = await asyncio.wait_for(client.send_code_request(phone_number), timeout=15.0)
+            if not await client.is_user_authorized():
+                # Send verification code
+                result = await client.send_code_request(phone_number)
                 
                 # Store pending verification info
                 self.pending_codes[phone_number] = {
@@ -388,11 +381,6 @@ class TelegramManager:
                     'message': 'Successfully connected to Telegram'
                 }
                 
-        except asyncio.TimeoutError:
-            return {
-                'success': False,
-                'message': 'Connection timeout. Please check your internet connection and try again.'
-            }
         except PhoneNumberInvalidError:
             return {
                 'success': False,
@@ -418,11 +406,11 @@ class TelegramManager:
             client = pending['client']
             
             if password:
-                # Two-factor authentication with timeout
-                await asyncio.wait_for(client.sign_in(password=password), timeout=15.0)
+                # Two-factor authentication
+                await client.sign_in(password=password)
             else:
-                # Regular code verification with timeout
-                await asyncio.wait_for(client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash']), timeout=15.0)
+                # Regular code verification
+                await client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash'])
             
             # Successfully authenticated
             self.clients[phone_number] = client
@@ -436,11 +424,6 @@ class TelegramManager:
                 'message': 'Successfully authenticated with Telegram'
             }
             
-        except asyncio.TimeoutError:
-            return {
-                'success': False,
-                'message': 'Authentication timeout. Please try again.'
-            }
         except SessionPasswordNeededError:
             return {
                 'success': False,
@@ -465,8 +448,7 @@ class TelegramManager:
             raise Exception("Client not connected")
         
         client = self.clients[phone_number]
-        # Add timeout to prevent hanging when fetching dialogs
-        dialogs = await asyncio.wait_for(client.get_dialogs(), timeout=20.0)
+        dialogs = await client.get_dialogs()
         
         chats = []
         for dialog in dialogs:
@@ -687,28 +669,6 @@ def verify_token(token: str) -> Optional[str]:
     except jwt.InvalidTokenError:
         return None
 
-def run_async_with_retry(coro, max_retries=1, delay=3):
-    """Run async function with retry logic for timeout/connection issues"""
-    global async_executor
-    if async_executor is None:
-        async_executor = AsyncExecutor()
-    
-    for attempt in range(max_retries + 1):
-        try:
-            return async_executor.run_async(coro)
-        except TimeoutError as e:
-            if attempt < max_retries:
-                logger.warning(f"Timeout on attempt {attempt + 1}, retrying in {delay} seconds...")
-                time.sleep(delay)
-                continue
-            else:
-                logger.error(f"Operation failed after {max_retries + 1} attempts due to timeout")
-                raise e
-        except Exception as e:
-            # Don't retry for non-timeout errors (like invalid credentials)
-            logger.error(f"Non-timeout error occurred: {str(e)}")
-            raise e
-
 def run_async(coro):
     """Run async function in sync context using the global executor"""
     global async_executor
@@ -734,13 +694,6 @@ def get_auth_token(request) -> tuple:
     
     return phone_number, None
 
-# Add this function after the imports
-def log_exception(logger, message: str, exception: Exception):
-    """Log exception with full traceback information"""
-    logger.error(f"{message}: {str(exception)}")
-    logger.error(f"Exception type: {type(exception).__name__}")
-    logger.error(f"Traceback: {traceback.format_exc()}")
-
 # API Routes
 
 @app.route('/api/health', methods=['GET'])
@@ -764,7 +717,7 @@ def login():
         return jsonify({'success': False, 'message': 'Missing credentials'}), 400
     
     try:
-        result = run_async_with_retry(telegram_manager.create_client(api_id, api_hash, phone_number))
+        result = run_async(telegram_manager.create_client(api_id, api_hash, phone_number))
         
         if result['success']:
             token = generate_token(phone_number)
@@ -773,10 +726,10 @@ def login():
         return jsonify(result)
         
     except Exception as e:
-        log_exception(logger, "Login error", e)
+        logger.error(f"Login error: {str(e)}")
         return jsonify({
             'success': False,
-            'message': f'Failed to connect: {str(e) if str(e) else "Unknown error occurred"}'
+            'message': f'Failed to connect: {str(e)}'
         }), 500
 
 @app.route('/api/auth/verify', methods=['POST'])
@@ -791,7 +744,7 @@ def verify_code():
         return jsonify({'success': False, 'message': 'Missing phone number or code'}), 400
     
     try:
-        result = run_async_with_retry(telegram_manager.verify_code(phone_number, code, password))
+        result = run_async(telegram_manager.verify_code(phone_number, code, password))
         
         if result['success']:
             token = generate_token(phone_number)
@@ -800,10 +753,10 @@ def verify_code():
         return jsonify(result)
         
     except Exception as e:
-        log_exception(logger, "Verification error", e)
+        logger.error(f"Verification error: {str(e)}")
         return jsonify({
             'success': False,
-            'message': f'Verification failed: {str(e) if str(e) else "Unknown error occurred"}'
+            'message': f'Verification failed: {str(e)}'
         }), 500
 
 @app.route('/api/auth/status', methods=['GET'])
@@ -838,12 +791,12 @@ def get_chats():
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
-        chats = run_async_with_retry(telegram_manager.get_dialogs(phone_number))
+        chats = run_async(telegram_manager.get_dialogs(phone_number))
         return jsonify({'chats': chats})
         
     except Exception as e:
-        log_exception(logger, "Error getting chats", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to get chats"}), 500
+        logger.error(f"Error getting chats: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/send', methods=['POST'])
 def send_message():
@@ -902,7 +855,7 @@ def send_message():
             })
         else:
             # Send immediately
-            results = run_async_with_retry(telegram_manager.send_message_to_recipients(phone_number, recipients, message))
+            results = run_async(telegram_manager.send_message_to_recipients(phone_number, recipients, message))
             
             sent_count = sum(1 for r in results if r['success'])
             failed_count = len(results) - sent_count
@@ -915,8 +868,8 @@ def send_message():
             })
             
     except Exception as e:
-        log_exception(logger, "Error sending message", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to send message"}), 500
+        logger.error(f"Error sending message: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/send-media', methods=['POST'])
 @rate_limit()
@@ -984,12 +937,12 @@ def send_message_with_media():
         else:
             # Send immediately
             if image_files:
-                results = run_async_with_retry(telegram_manager.send_message_with_media_to_recipients(
+                results = run_async(telegram_manager.send_message_with_media_to_recipients(
                     phone_number, recipients, message, image_files
                 ))
             else:
                 # Fallback to text-only if no images
-                results = run_async_with_retry(telegram_manager.send_message_to_recipients(
+                results = run_async(telegram_manager.send_message_to_recipients(
                     phone_number, recipients, message
                 ))
             
@@ -1005,8 +958,8 @@ def send_message_with_media():
             })
             
     except Exception as e:
-        log_exception(logger, "Error sending message with media", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to send message with media"}), 500
+        logger.error(f"Error sending message with media: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/scheduled', methods=['GET'])
 def get_scheduled_messages():
@@ -1020,8 +973,8 @@ def get_scheduled_messages():
         return jsonify({'messages': messages})
         
     except Exception as e:
-        log_exception(logger, "Error getting scheduled messages", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to get scheduled messages"}), 500
+        logger.error(f"Error getting scheduled messages: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/execute/<int:message_id>', methods=['POST'])
 def execute_scheduled_message(message_id):
@@ -1048,7 +1001,7 @@ def execute_scheduled_message(message_id):
             return jsonify({'error': 'Message already processed'}), 400
         
         # Execute the message
-        results = run_async_with_retry(telegram_manager.send_message_to_recipients(
+        results = run_async(telegram_manager.send_message_to_recipients(
             phone_number, 
             message['recipients'], 
             message['message']
@@ -1067,9 +1020,9 @@ def execute_scheduled_message(message_id):
         })
         
     except Exception as e:
-        log_exception(logger, "Error executing message", e)
+        logger.error(f"Error executing message: {str(e)}")
         db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
-        return jsonify({'error': str(e) if str(e) else "Failed to execute message"}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/<int:message_id>', methods=['DELETE'])
 def delete_scheduled_message(message_id):
@@ -1092,8 +1045,8 @@ def delete_scheduled_message(message_id):
             return jsonify({'error': 'Message not found'}), 404
             
     except Exception as e:
-        log_exception(logger, "Error deleting message", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to delete message"}), 500
+        logger.error(f"Error deleting message: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/scheduler/status', methods=['GET'])
 def scheduler_status():
@@ -1130,8 +1083,8 @@ def scheduler_status():
         })
         
     except Exception as e:
-        log_exception(logger, "Error getting scheduler status", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to get scheduler status"}), 500
+        logger.error(f"Error getting scheduler status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/scheduler/debug', methods=['GET'])
 def scheduler_debug():
@@ -1185,8 +1138,8 @@ def scheduler_debug():
         return jsonify(debug_info)
         
     except Exception as e:
-        log_exception(logger, "Error in scheduler debug", e)
-        return jsonify({'error': str(e) if str(e) else "Failed to get debug info"}), 500
+        logger.error(f"Error in scheduler debug: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/timezone-info', methods=['GET'])
 def timezone_info():
@@ -1235,7 +1188,7 @@ class ScheduledMessageProcessor:
                 # Sleep for 30 seconds (check twice per minute for better accuracy)
                 time.sleep(30)
             except Exception as e:
-                log_exception(logger, "Error in scheduler", e)
+                logger.error(f"Error in scheduler: {str(e)}")
                 time.sleep(60)  # Wait longer on error
     
     def _process_due_messages(self):
@@ -1302,7 +1255,7 @@ class ScheduledMessageProcessor:
                     logger.info(f"⏰ Message {message['id']}: scheduled={scheduled_time.isoformat()}, now={now.isoformat()}")
                     
                 except ValueError as e:
-                    log_exception(logger, f"Invalid date format for message {message['id']}: {message['scheduled_for']}", e)
+                    logger.error(f"Invalid date format for message {message['id']}: {message['scheduled_for']} - {str(e)}")
                     self.db_manager.update_message_status(message['id'], 'failed', now.isoformat())
                     continue
                 
@@ -1315,7 +1268,7 @@ class ScheduledMessageProcessor:
                     logger.info(f"⏳ Message {message['id']} not yet due. Time remaining: {int(time_until_due/60)} minutes")
         
         except Exception as e:
-            log_exception(logger, "Error processing due messages", e)
+            logger.error(f"Error processing due messages: {str(e)}")
     
     def _execute_message(self, message):
         """Execute a single scheduled message"""
@@ -1332,8 +1285,8 @@ class ScheduledMessageProcessor:
             # Parse recipients
             try:
                 recipients = json.loads(message['recipients']) if isinstance(message['recipients'], str) else message['recipients']
-            except json.JSONDecodeError as e:
-                log_exception(logger, f"Invalid recipients format for message {message_id}", e)
+            except json.JSONDecodeError:
+                logger.error(f"Invalid recipients format for message {message_id}")
                 self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
                 return
             
@@ -1341,7 +1294,7 @@ class ScheduledMessageProcessor:
             logger.info(f"📤 Sending scheduled message {message_id} to {len(recipients)} recipients")
             
             # Use the async executor to run the coroutine
-            results = run_async_with_retry(self.telegram_manager.send_message_to_recipients(
+            results = run_async(self.telegram_manager.send_message_to_recipients(
                 phone_number, 
                 recipients, 
                 message['message']
@@ -1361,7 +1314,7 @@ class ScheduledMessageProcessor:
             self.db_manager.update_message_status(message_id, status, datetime.now().isoformat())
             
         except Exception as e:
-            log_exception(logger, f"Error executing scheduled message {message_id}", e)
+            logger.error(f"❌ Error executing scheduled message {message_id}: {str(e)}")
             self.db_manager.update_message_status(message_id, 'failed', datetime.now().isoformat())
 
 if __name__ == '__main__':
@@ -1386,7 +1339,7 @@ if __name__ == '__main__':
     
     # Restore existing sessions after all components are ready
     logger.info("🔄 Restoring existing Telegram sessions...")
-    run_async_with_retry(telegram_manager.restore_existing_sessions())
+    run_async(telegram_manager.restore_existing_sessions())
     
     logger.info("🚀 Starting Flask development server...")
     
@@ -1399,7 +1352,7 @@ if __name__ == '__main__':
         
         # Close all Telegram sessions
         if telegram_manager:
-            run_async_with_retry(telegram_manager.close_all_sessions())
+            run_async(telegram_manager.close_all_sessions())
         
         if message_processor:
             message_processor.stop()
