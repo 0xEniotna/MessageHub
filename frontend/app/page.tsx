@@ -45,6 +45,25 @@ interface GroupList {
   createdAt: string;
 }
 
+interface MediaFile {
+  original_filename: string;
+  saved_path: string;
+  file_size: number;
+  content_type: string;
+}
+
+interface ScheduledMessage {
+  id: string;
+  phone_number: string;
+  recipients: Group[];
+  message: string;
+  scheduled_for: string;
+  status: 'pending' | 'sent' | 'failed';
+  created_at: string;
+  executed_at?: string;
+  media_files?: MediaFile[];
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [step, setStep] = useState<
@@ -87,7 +106,9 @@ export default function Home() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
-  const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
+  const [scheduledMessages, setScheduledMessages] = useState<
+    ScheduledMessage[]
+  >([]);
   const [loadingScheduled, setLoadingScheduled] = useState(false);
 
   // New state for adding to existing lists
@@ -1854,52 +1875,40 @@ export default function Home() {
                 {isScheduled && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
                     {selectedImages.length > 0 && (
-                      <div
-                        className="mb-3 p-3 retro-border text-center"
-                        style={{
-                          background:
-                            'linear-gradient(45deg, #ffcc99, #fff999)',
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontFamily: 'Comic Sans MS, cursive',
-                            color: '#800000',
-                            fontWeight: 'bold',
-                            fontSize: '12px',
-                          }}
-                        >
-                          ⚠️ SCHEDULING WITH IMAGES IS NOT YET SUPPORTED ⚠️
+                      <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                        <div className="text-green-800 font-medium text-sm">
+                          ✅ SCHEDULING WITH MEDIA IS NOW SUPPORTED!
                           <br />
-                          Please send images immediately or schedule text-only
-                          messages.
+                          <span className="text-green-600 text-xs">
+                            Your {selectedImages.length} image(s) will be sent
+                            at the scheduled time.
+                          </span>
                         </div>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3">
+
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-blue-700 mb-1">
-                          Date
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          📅 Date
                         </label>
                         <input
                           type="date"
                           value={scheduledDate}
                           onChange={(e) => setScheduledDate(e.target.value)}
-                          min={new Date().toISOString().split('T')[0]} // Prevent past dates
-                          className="retro-input w-full p-2 text-black"
-                          required
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-telegram-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-blue-700 mb-1">
-                          Time
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          ⏰ Time
                         </label>
                         <input
                           type="time"
                           value={scheduledTime}
                           onChange={(e) => setScheduledTime(e.target.value)}
-                          className="retro-input w-full p-2 text-black"
-                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-telegram-500"
                         />
                       </div>
                     </div>
