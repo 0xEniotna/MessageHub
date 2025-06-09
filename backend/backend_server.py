@@ -164,7 +164,12 @@ class AsyncExecutor:
             raise RuntimeError("Event loop not initialized")
         
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        return future.result(timeout=30)  # 30 second timeout
+        try:
+            return future.result(timeout=120)  # Increased from 30 to 120 seconds
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            logger.error("Async operation timed out after 120 seconds")
+            raise TimeoutError("Operation timed out - Telegram API may be slow or unreachable")
     
     def close(self):
         """Clean shutdown of the executor"""
@@ -670,6 +675,27 @@ def verify_token(token: str) -> Optional[str]:
     except jwt.InvalidTokenError:
         return None
 
+def run_async_with_retry(coro, max_retries=2, delay=5):
+    """Run async function with retry logic for timeout/connection issues"""
+    global async_executor
+    if async_executor is None:
+        async_executor = AsyncExecutor()
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return async_executor.run_async(coro)
+        except TimeoutError as e:
+            if attempt < max_retries:
+                logger.warning(f"Timeout on attempt {attempt + 1}, retrying in {delay} seconds...")
+                time.sleep(delay)
+                continue
+            else:
+                logger.error(f"Operation failed after {max_retries + 1} attempts")
+                raise e
+        except Exception as e:
+            # Don't retry for non-timeout errors
+            raise e
+
 def run_async(coro):
     """Run async function in sync context using the global executor"""
     global async_executor
@@ -725,7 +751,7 @@ def login():
         return jsonify({'success': False, 'message': 'Missing credentials'}), 400
     
     try:
-        result = run_async(telegram_manager.create_client(api_id, api_hash, phone_number))
+        result = run_async_with_retry(telegram_manager.create_client(api_id, api_hash, phone_number))
         
         if result['success']:
             token = generate_token(phone_number)
@@ -752,7 +778,7 @@ def verify_code():
         return jsonify({'success': False, 'message': 'Missing phone number or code'}), 400
     
     try:
-        result = run_async(telegram_manager.verify_code(phone_number, code, password))
+        result = run_async_with_retry(telegram_manager.verify_code(phone_number, code, password))
         
         if result['success']:
             token = generate_token(phone_number)
@@ -799,7 +825,7 @@ def get_chats():
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
-        chats = run_async(telegram_manager.get_dialogs(phone_number))
+        chats = run_async_with_retry(telegram_manager.get_dialogs(phone_number))
         return jsonify({'chats': chats})
         
     except Exception as e:
@@ -863,7 +889,7 @@ def send_message():
             })
         else:
             # Send immediately
-            results = run_async(telegram_manager.send_message_to_recipients(phone_number, recipients, message))
+            results = run_async_with_retry(telegram_manager.send_message_to_recipients(phone_number, recipients, message))
             
             sent_count = sum(1 for r in results if r['success'])
             failed_count = len(results) - sent_count
@@ -945,12 +971,12 @@ def send_message_with_media():
         else:
             # Send immediately
             if image_files:
-                results = run_async(telegram_manager.send_message_with_media_to_recipients(
+                results = run_async_with_retry(telegram_manager.send_message_with_media_to_recipients(
                     phone_number, recipients, message, image_files
                 ))
             else:
                 # Fallback to text-only if no images
-                results = run_async(telegram_manager.send_message_to_recipients(
+                results = run_async_with_retry(telegram_manager.send_message_to_recipients(
                     phone_number, recipients, message
                 ))
             
@@ -1009,7 +1035,7 @@ def execute_scheduled_message(message_id):
             return jsonify({'error': 'Message already processed'}), 400
         
         # Execute the message
-        results = run_async(telegram_manager.send_message_to_recipients(
+        results = run_async_with_retry(telegram_manager.send_message_to_recipients(
             phone_number, 
             message['recipients'], 
             message['message']
@@ -1302,7 +1328,7 @@ class ScheduledMessageProcessor:
             logger.info(f"📤 Sending scheduled message {message_id} to {len(recipients)} recipients")
             
             # Use the async executor to run the coroutine
-            results = run_async(self.telegram_manager.send_message_to_recipients(
+            results = run_async_with_retry(self.telegram_manager.send_message_to_recipients(
                 phone_number, 
                 recipients, 
                 message['message']
@@ -1347,7 +1373,7 @@ if __name__ == '__main__':
     
     # Restore existing sessions after all components are ready
     logger.info("🔄 Restoring existing Telegram sessions...")
-    run_async(telegram_manager.restore_existing_sessions())
+    run_async_with_retry(telegram_manager.restore_existing_sessions())
     
     logger.info("🚀 Starting Flask development server...")
     
@@ -1360,7 +1386,7 @@ if __name__ == '__main__':
         
         # Close all Telegram sessions
         if telegram_manager:
-            run_async(telegram_manager.close_all_sessions())
+            run_async_with_retry(telegram_manager.close_all_sessions())
         
         if message_processor:
             message_processor.stop()
