@@ -220,33 +220,8 @@ export default function Home() {
 
   // Check auth status on load
   useEffect(() => {
-    console.log('🚀 [App] Component mounted');
-    console.log('🌍 [App] Environment:', process.env.NODE_ENV);
-    console.log('🔗 [App] API URL:', process.env.NEXT_PUBLIC_API_URL);
-    if (typeof window !== 'undefined') {
-      console.log('🏠 [App] Window location:', window.location.href);
-      console.log('🔧 [App] User agent:', navigator.userAgent);
-    }
-
-    // Test API connectivity immediately
-    testBackendConnection();
-
-    // Then check auth status
     checkAuthStatus();
   }, []);
-
-  const testBackendConnection = async () => {
-    console.log('🏥 [App] Testing backend connection...');
-    try {
-      const response = await apiClient.healthCheck();
-      console.log('✅ [App] Backend health check successful:', response);
-    } catch (error) {
-      console.error('❌ [App] Backend health check failed:', error);
-      console.error(
-        '💡 [App] This suggests the backend is not reachable from Vercel'
-      );
-    }
-  };
 
   // Auto-focus message textarea when compose tab is active
   useEffect(() => {
@@ -260,152 +235,111 @@ export default function Home() {
   }, [activeTab]);
 
   const checkAuthStatus = async () => {
-    console.log('🔍 [App] Checking authentication status...');
     try {
       const status = await apiClient.checkAuthStatus();
-      console.log('✅ [App] Auth status response:', status);
       if (status.connected) {
-        console.log('🎉 [App] User is authenticated, loading chats...');
         setIsAuthenticated(true);
         setStep('authenticated');
         loadChats();
-      } else {
-        console.log('❌ [App] User is not authenticated');
       }
     } catch (error) {
-      console.error('❌ [App] Auth check failed:', error);
+      console.error('Auth check failed:', error);
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('🔐 [App] Starting login process...');
-    console.log('📋 [App] Login form data:', {
-      api_id: credentials.api_id,
-      phone_number: credentials.phone_number,
-      api_hash: credentials.api_hash ? '[PROVIDED]' : '[MISSING]',
-    });
-
     setLoading(true);
     setError('');
 
     try {
-      console.log('🌐 [App] Calling API login...');
       const response = await apiClient.login(credentials);
-      console.log('📥 [App] Login response:', response);
 
       if (response.success) {
-        console.log('✅ [App] Login successful!');
-
         // Save only API credentials to localStorage for transparency (NOT phone number)
-        const configToSave = {
-          apiId: credentials.api_id,
-          apiHash: credentials.api_hash,
-          // phoneNumber is intentionally NOT stored for privacy
-        };
-        console.log('💾 [App] Saving config to localStorage:', configToSave);
-        localStorage.setItem('telegram-config', JSON.stringify(configToSave));
+        localStorage.setItem(
+          'telegram-config',
+          JSON.stringify({
+            apiId: credentials.api_id,
+            apiHash: credentials.api_hash,
+            // phoneNumber is intentionally NOT stored for privacy
+          })
+        );
 
         // Store session token for API calls
         if (response.session_token) {
           localStorage.setItem('session_token', response.session_token);
-          console.log('🔑 [App] Session token saved');
         }
 
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully connected!');
-        console.log('📱 [App] Loading chats...');
         loadChats();
       } else if (response.requires_code) {
-        console.log('📨 [App] Verification code required');
         setStep('verification');
         setSuccess('Verification code sent to your phone!');
       } else {
-        console.error('❌ [App] Login failed:', response.message);
         setError(response.message || 'Login failed');
       }
     } catch (error: any) {
-      console.error('💥 [App] Login error:', error);
       setError(error.message || 'Failed to connect');
     } finally {
       setLoading(false);
-      console.log('🏁 [App] Login process completed');
     }
   };
 
   const handleVerification = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('🔐 [App] Starting verification process...');
-    console.log('📋 [App] Verification data:', {
-      phone_number: credentials.phone_number,
-      code: verificationCode,
-      has_password: !!password,
-    });
-
     setLoading(true);
     setError('');
 
     try {
-      console.log('🌐 [App] Calling API verify...');
       const response = await apiClient.verifyCode({
         phone_number: credentials.phone_number,
         code: verificationCode,
         password: requiresPassword ? password : undefined,
       });
-      console.log('📥 [App] Verification response:', response);
 
       if (response.success) {
-        console.log('✅ [App] Verification successful!');
-
         // Save only API credentials to localStorage for transparency (NOT phone number)
-        const configToSave = {
-          apiId: credentials.api_id,
-          apiHash: credentials.api_hash,
-          // phoneNumber is intentionally NOT stored for privacy
-        };
-        console.log('💾 [App] Saving config to localStorage:', configToSave);
-        localStorage.setItem('telegram-config', JSON.stringify(configToSave));
+        localStorage.setItem(
+          'telegram-config',
+          JSON.stringify({
+            apiId: credentials.api_id,
+            apiHash: credentials.api_hash,
+            // phoneNumber is intentionally NOT stored for privacy
+          })
+        );
 
         // Store session token for API calls
         if (response.session_token) {
           localStorage.setItem('session_token', response.session_token);
-          console.log('🔑 [App] Session token saved');
         }
 
         setIsAuthenticated(true);
         setStep('authenticated');
         setSuccess('Successfully authenticated!');
-        console.log('📱 [App] Loading chats...');
         loadChats();
       } else if (response.requires_password) {
-        console.log('🔐 [App] 2FA password required');
         setRequiresPassword(true);
         setError(
-          'Two-factor authentication enabled. Please enter your password.'
+          'Two-factor authentication required. Please enter your password.'
         );
       } else {
-        console.error('❌ [App] Verification failed:', response.message);
         setError(response.message || 'Verification failed');
       }
     } catch (error: any) {
-      console.error('💥 [App] Verification error:', error);
       setError(error.message || 'Verification failed');
     } finally {
       setLoading(false);
-      console.log('🏁 [App] Verification process completed');
     }
   };
 
   const loadChats = async () => {
-    console.log('📱 [App] Loading chats...');
     try {
       const response = await apiClient.getChats();
-      console.log('📥 [App] Chats response:', response);
       setChats(response.chats || []);
-      console.log(`✅ [App] Loaded ${response.chats?.length || 0} chats`);
     } catch (error: any) {
-      console.error('💥 [App] Error loading chats:', error);
       setError(error.message || 'Failed to load chats');
     }
   };
@@ -1005,46 +939,6 @@ export default function Home() {
                 ⚠️ ERROR: {error} ⚠️
               </div>
             )}
-
-            {/* Debug Connection Section */}
-            <div
-              className="mb-4 p-3 retro-border"
-              style={{
-                background: '#e6e6fa',
-                fontSize: '12px',
-                fontFamily: 'Courier New, monospace',
-              }}
-            >
-              <div className="font-bold mb-2" style={{ color: '#800080' }}>
-                🔧 CONNECTION DEBUG INFO:
-              </div>
-              <div style={{ color: '#000080' }}>
-                🌍 Environment: {process.env.NODE_ENV || 'undefined'}
-              </div>
-              <div style={{ color: '#000080' }}>
-                🔗 API URL:{' '}
-                {process.env.NEXT_PUBLIC_API_URL ||
-                  'http://localhost:8000 (default)'}
-              </div>
-              <div style={{ color: '#000080' }}>
-                🏠 Current URL:{' '}
-                {typeof window !== 'undefined' ? window.location.href : 'SSR'}
-              </div>
-              <button
-                type="button"
-                onClick={testBackendConnection}
-                className="mt-2 px-3 py-1 text-xs"
-                style={{
-                  background: '#90EE90',
-                  border: '1px solid #000',
-                  color: '#000',
-                  fontFamily: 'Courier New, monospace',
-                  fontWeight: 'bold',
-                }}
-              >
-                🏥 TEST BACKEND
-              </button>
-            </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
