@@ -165,11 +165,11 @@ class AsyncExecutor:
         
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try:
-            return future.result(timeout=120)  # Increased from 30 to 120 seconds
+            return future.result(timeout=30)  # Reduced from 120 to 30 seconds
         except concurrent.futures.TimeoutError:
             future.cancel()
-            logger.error("Async operation timed out after 120 seconds")
-            raise TimeoutError("Operation timed out - Telegram API may be slow or unreachable")
+            logger.error("Async operation timed out after 30 seconds")
+            raise TimeoutError("Operation timed out - check your internet connection and Telegram API availability")
     
     def close(self):
         """Clean shutdown of the executor"""
@@ -357,11 +357,12 @@ class TelegramManager:
             session_file = f"{SESSIONS_DIR}/{phone_number}.session"
             client = TelegramClient(session_file, int(api_id), api_hash)
             
-            await client.connect()
+            # Add timeout to prevent hanging on connection
+            await asyncio.wait_for(client.connect(), timeout=15.0)
             
-            if not await client.is_user_authorized():
-                # Send verification code
-                result = await client.send_code_request(phone_number)
+            if not await asyncio.wait_for(client.is_user_authorized(), timeout=10.0):
+                # Send verification code with timeout
+                result = await asyncio.wait_for(client.send_code_request(phone_number), timeout=15.0)
                 
                 # Store pending verification info
                 self.pending_codes[phone_number] = {
@@ -387,6 +388,11 @@ class TelegramManager:
                     'message': 'Successfully connected to Telegram'
                 }
                 
+        except asyncio.TimeoutError:
+            return {
+                'success': False,
+                'message': 'Connection timeout. Please check your internet connection and try again.'
+            }
         except PhoneNumberInvalidError:
             return {
                 'success': False,
@@ -412,11 +418,11 @@ class TelegramManager:
             client = pending['client']
             
             if password:
-                # Two-factor authentication
-                await client.sign_in(password=password)
+                # Two-factor authentication with timeout
+                await asyncio.wait_for(client.sign_in(password=password), timeout=15.0)
             else:
-                # Regular code verification
-                await client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash'])
+                # Regular code verification with timeout
+                await asyncio.wait_for(client.sign_in(phone_number, code, phone_code_hash=pending['phone_code_hash']), timeout=15.0)
             
             # Successfully authenticated
             self.clients[phone_number] = client
@@ -430,6 +436,11 @@ class TelegramManager:
                 'message': 'Successfully authenticated with Telegram'
             }
             
+        except asyncio.TimeoutError:
+            return {
+                'success': False,
+                'message': 'Authentication timeout. Please try again.'
+            }
         except SessionPasswordNeededError:
             return {
                 'success': False,
@@ -454,7 +465,8 @@ class TelegramManager:
             raise Exception("Client not connected")
         
         client = self.clients[phone_number]
-        dialogs = await client.get_dialogs()
+        # Add timeout to prevent hanging when fetching dialogs
+        dialogs = await asyncio.wait_for(client.get_dialogs(), timeout=20.0)
         
         chats = []
         for dialog in dialogs:
@@ -675,7 +687,7 @@ def verify_token(token: str) -> Optional[str]:
     except jwt.InvalidTokenError:
         return None
 
-def run_async_with_retry(coro, max_retries=2, delay=5):
+def run_async_with_retry(coro, max_retries=1, delay=3):
     """Run async function with retry logic for timeout/connection issues"""
     global async_executor
     if async_executor is None:
@@ -690,10 +702,11 @@ def run_async_with_retry(coro, max_retries=2, delay=5):
                 time.sleep(delay)
                 continue
             else:
-                logger.error(f"Operation failed after {max_retries + 1} attempts")
+                logger.error(f"Operation failed after {max_retries + 1} attempts due to timeout")
                 raise e
         except Exception as e:
-            # Don't retry for non-timeout errors
+            # Don't retry for non-timeout errors (like invalid credentials)
+            logger.error(f"Non-timeout error occurred: {str(e)}")
             raise e
 
 def run_async(coro):
