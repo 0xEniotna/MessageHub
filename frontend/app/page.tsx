@@ -839,6 +839,116 @@ export default function Home() {
                 >
                   🚀 QUICK ACTIONS:
                 </p>
+
+                {/* Add to Existing List */}
+                {groupLists.length > 0 && (
+                  <div
+                    className="mb-4 p-3 retro-border"
+                    style={{
+                      background: 'linear-gradient(45deg, #fff9e6, #ffe6cc)',
+                    }}
+                  >
+                    <p
+                      className="text-sm font-bold mb-2"
+                      style={{
+                        fontFamily: 'Arial Black, sans-serif',
+                        color: '#000080',
+                      }}
+                    >
+                      📋 ADD TO EXISTING LIST:
+                    </p>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={selectedExistingList}
+                        onChange={(e) =>
+                          setSelectedExistingList(e.target.value)
+                        }
+                        className="retro-input flex-1 p-2 text-black text-sm"
+                        style={{
+                          fontFamily: 'Courier New, monospace',
+                        }}
+                      >
+                        <option value="">Choose a list to add to...</option>
+                        {groupLists.map((list) => (
+                          <option key={list.id} value={list.id}>
+                            {list.name} ({list.groups.length} chats)
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!selectedExistingList) {
+                            setError('Please select a list to add to');
+                            return;
+                          }
+
+                          const selectedChatObjects = chats.filter((chat) =>
+                            selectedChats.includes(chat.id)
+                          );
+                          const newGroups = selectedChatObjects.map((chat) => ({
+                            id: chat.id,
+                            name: chat.name,
+                            type: chat.type as 'user' | 'group',
+                            identifier: chat.username
+                              ? `@${chat.username}`
+                              : chat.id,
+                          }));
+
+                          setGroupLists((prevLists) =>
+                            prevLists.map((list) => {
+                              if (list.id === selectedExistingList) {
+                                // Filter out duplicates based on identifier
+                                const existingIdentifiers = list.groups.map(
+                                  (g) => g.identifier
+                                );
+                                const uniqueNewGroups = newGroups.filter(
+                                  (g) =>
+                                    !existingIdentifiers.includes(g.identifier)
+                                );
+
+                                if (uniqueNewGroups.length === 0) {
+                                  setError(
+                                    'All selected chats are already in this list'
+                                  );
+                                  return list;
+                                }
+
+                                setSuccess(
+                                  `Added ${uniqueNewGroups.length} chat${
+                                    uniqueNewGroups.length !== 1 ? 's' : ''
+                                  } to "${list.name}"`
+                                );
+                                setSelectedChats([]);
+                                setSelectedExistingList('');
+
+                                return {
+                                  ...list,
+                                  groups: [...list.groups, ...uniqueNewGroups],
+                                };
+                              }
+                              return list;
+                            })
+                          );
+                        }}
+                        disabled={!selectedExistingList || isAddingToList}
+                        className="retro-button px-4 py-2 text-black text-sm"
+                        style={{
+                          background:
+                            'linear-gradient(45deg, #99ff99, #66ff66)',
+                          opacity:
+                            !selectedExistingList || isAddingToList ? 0.5 : 1,
+                        }}
+                      >
+                        {isAddingToList
+                          ? '⏳ ADDING...'
+                          : `➕ ADD ${selectedChats.length} CHAT${
+                              selectedChats.length !== 1 ? 'S' : ''
+                            }`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={() => setActiveTab('compose')}
@@ -859,7 +969,7 @@ export default function Home() {
                       background: 'linear-gradient(45deg, #ffcc99, #ff9966)',
                     }}
                   >
-                    📋 CREATE GROUP LIST
+                    📋 CREATE NEW LIST
                   </button>
                 </div>
               </div>
