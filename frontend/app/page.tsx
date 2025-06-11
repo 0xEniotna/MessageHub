@@ -666,13 +666,204 @@ export default function Home() {
               </h2>
             </div>
 
-            {/* Chat selection UI would go here - keeping existing implementation for now */}
-            <div className="text-center p-8">
-              <p className="text-gray-600">
-                Chat selection interface will be moved to a separate component
-                next...
-              </p>
+            {/* Search Bar */}
+            <div className="mb-6">
+              <label
+                className="block text-sm font-bold mb-2"
+                style={{
+                  fontFamily: 'Arial Black, sans-serif',
+                  color: '#000080',
+                }}
+              >
+                🔍 SEARCH CHATS
+              </label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Type to search for chats..."
+                className="retro-input w-full p-3 text-black"
+                style={{
+                  fontFamily: 'Courier New, monospace',
+                }}
+              />
             </div>
+
+            {/* Bulk Actions */}
+            <div className="mb-6 flex gap-4">
+              <button
+                onClick={() =>
+                  setSelectedChats(filteredChats.map((chat) => chat.id))
+                }
+                className="retro-button px-4 py-2 text-black text-sm"
+                style={{
+                  background: 'linear-gradient(45deg, #99ff99, #66ff66)',
+                }}
+              >
+                ✅ SELECT ALL ({filteredChats.length})
+              </button>
+              <button
+                onClick={() => setSelectedChats([])}
+                className="retro-button px-4 py-2 text-black text-sm"
+                style={{
+                  background: 'linear-gradient(45deg, #ff9999, #ff6666)',
+                }}
+              >
+                ❌ CLEAR ALL
+              </button>
+            </div>
+
+            {/* Selected Count */}
+            {selectedChats.length > 0 && (
+              <div
+                className="mb-4 p-3 retro-border"
+                style={{
+                  background: 'linear-gradient(45deg, #ffff99, #ffcc99)',
+                }}
+              >
+                <p
+                  className="text-sm font-bold"
+                  style={{
+                    fontFamily: 'Arial Black, sans-serif',
+                    color: '#000080',
+                  }}
+                >
+                  🎯 {selectedChats.length} CHAT
+                  {selectedChats.length !== 1 ? 'S' : ''} SELECTED!
+                </p>
+              </div>
+            )}
+
+            {/* Chat List */}
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {filteredChats.length === 0 ? (
+                <div className="text-center p-8">
+                  <p
+                    className="text-gray-600"
+                    style={{
+                      fontFamily: 'Courier New, monospace',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {searchQuery
+                      ? 'No chats found matching your search...'
+                      : 'No chats available. Make sure you are authenticated.'}
+                  </p>
+                </div>
+              ) : (
+                filteredChats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className={`p-3 retro-border cursor-pointer transition-all ${
+                      selectedChats.includes(chat.id)
+                        ? 'bg-gradient-to-r from-green-200 to-green-300'
+                        : 'bg-gradient-to-r from-gray-100 to-gray-200 hover:from-blue-100 hover:to-blue-200'
+                    }`}
+                    onClick={() => {
+                      if (selectedChats.includes(chat.id)) {
+                        setSelectedChats(
+                          selectedChats.filter((id) => id !== chat.id)
+                        );
+                      } else {
+                        setSelectedChats([...selectedChats, chat.id]);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div
+                          className={`w-6 h-6 retro-border flex items-center justify-center ${
+                            selectedChats.includes(chat.id)
+                              ? 'bg-green-500 text-white'
+                              : 'bg-white'
+                          }`}
+                        >
+                          {selectedChats.includes(chat.id) && '✓'}
+                        </div>
+                        <div>
+                          <div
+                            className="font-bold text-black"
+                            style={{
+                              fontFamily: 'Arial Black, sans-serif',
+                            }}
+                          >
+                            {chat.name}
+                          </div>
+                          <div
+                            className="text-xs"
+                            style={{
+                              fontFamily: 'Courier New, monospace',
+                              color: '#666',
+                            }}
+                          >
+                            {chat.type.toUpperCase()}
+                            {chat.username && ` • @${chat.username}`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className="text-2xl"
+                        style={{
+                          fontFamily: 'Arial Black, sans-serif',
+                        }}
+                      >
+                        {chat.type === 'user'
+                          ? '👤'
+                          : chat.type === 'group'
+                          ? '👥'
+                          : chat.type === 'channel'
+                          ? '📢'
+                          : '🏢'}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            {selectedChats.length > 0 && (
+              <div
+                className="mt-6 p-4 retro-border"
+                style={{
+                  background: 'linear-gradient(45deg, #e6f3ff, #cce7ff)',
+                }}
+              >
+                <p
+                  className="text-sm font-bold mb-3"
+                  style={{
+                    fontFamily: 'Arial Black, sans-serif',
+                    color: '#000080',
+                  }}
+                >
+                  🚀 QUICK ACTIONS:
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveTab('compose')}
+                    className="retro-button px-4 py-2 text-black text-sm"
+                    style={{
+                      background: 'linear-gradient(45deg, #99ff99, #66ff66)',
+                    }}
+                  >
+                    ✉️ COMPOSE MESSAGE
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedGroupList('');
+                      setActiveTab('lists');
+                    }}
+                    className="retro-button px-4 py-2 text-black text-sm"
+                    style={{
+                      background: 'linear-gradient(45deg, #ffcc99, #ff9966)',
+                    }}
+                  >
+                    📋 CREATE GROUP LIST
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
