@@ -44,6 +44,7 @@ export default function GroupListManager({
   const [newGroupIdentifier, setNewGroupIdentifier] = useState('');
   const [newGroupType, setNewGroupType] = useState<'user' | 'group'>('group');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const individualImportRef = useRef<HTMLInputElement>(null);
 
   // Add retro styling
   const retroStyles = `
@@ -310,6 +311,148 @@ export default function GroupListManager({
     }
   };
 
+  // Export individual list
+  const exportSingleList = (list: GroupList) => {
+    try {
+      const exportData = {
+        version: '1.0',
+        exportDate: new Date().toISOString(),
+        lists: [list], // Only export this one list
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Clean filename by removing special characters
+      const cleanName = list.name
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '-');
+      link.download = `messagehub-${cleanName}-${
+        new Date().toISOString().split('T')[0]
+      }.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(
+        `💾 "${list.name.toUpperCase()}" LIST EXPORTED SUCCESSFULLY! 💾`
+      );
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error(`❌ FAILED TO EXPORT "${list.name.toUpperCase()}" LIST! ❌`);
+    }
+  };
+
+  // Import to specific list (merge contacts)
+  const importToList = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    targetListId: string
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/json') {
+      toast.error('🚨 PLEASE SELECT A JSON FILE! 🚨');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const importData = JSON.parse(content);
+
+        // Validate the imported data structure
+        if (!importData.lists || !Array.isArray(importData.lists)) {
+          throw new Error('Invalid file format: missing lists array');
+        }
+
+        // Get all groups from all imported lists
+        const allImportedGroups: Group[] = [];
+        for (const list of importData.lists) {
+          if (!list.groups || !Array.isArray(list.groups)) {
+            throw new Error('Invalid list format: missing groups array');
+          }
+
+          // Validate each group
+          for (const group of list.groups) {
+            if (!group.id || !group.name || !group.type || !group.identifier) {
+              throw new Error('Invalid group format: missing required fields');
+            }
+            if (!['user', 'group'].includes(group.type)) {
+              throw new Error('Invalid group type: must be "user" or "group"');
+            }
+          }
+
+          allImportedGroups.push(...list.groups);
+        }
+
+        // Find target list and merge groups
+        const updatedLists = groupLists.map((list: GroupList) => {
+          if (list.id === targetListId) {
+            // Filter out duplicates based on identifier
+            const existingIdentifiers = list.groups.map(
+              (g: Group) => g.identifier
+            );
+            const uniqueNewGroups = allImportedGroups
+              .filter((g: Group) => !existingIdentifiers.includes(g.identifier))
+              .map((group: Group) => ({
+                ...group,
+                id:
+                  Date.now().toString() +
+                  Math.random().toString(36).substr(2, 9), // Generate new ID
+              }));
+
+            if (uniqueNewGroups.length === 0) {
+              toast.error(
+                '🚨 NO NEW CONTACTS TO IMPORT - ALL ALREADY EXIST! 🚨'
+              );
+              return list;
+            }
+
+            toast.success(
+              `✅ IMPORTED ${
+                uniqueNewGroups.length
+              } CONTACT(S) TO "${list.name.toUpperCase()}"! ✅`
+            );
+
+            return {
+              ...list,
+              groups: [...list.groups, ...uniqueNewGroups],
+            };
+          }
+          return list;
+        });
+
+        setGroupLists(updatedLists);
+      } catch (error) {
+        console.error('Import error:', error);
+        toast.error(
+          `❌ FAILED TO IMPORT: ${
+            error instanceof Error
+              ? error.message.toUpperCase()
+              : 'INVALID FILE FORMAT'
+          } ❌`
+        );
+      }
+    };
+
+    reader.onerror = () => {
+      toast.error('❌ FAILED TO READ FILE! ❌');
+    };
+
+    reader.readAsText(file);
+
+    // Reset file input
+    event.target.value = '';
+  };
+
   return (
     <div>
       <style jsx>{retroStyles}</style>
@@ -382,6 +525,20 @@ export default function GroupListManager({
           type="file"
           accept=".json"
           onChange={importLists}
+          style={{ display: 'none' }}
+        />
+
+        {/* Hidden file input for individual list import */}
+        <input
+          ref={individualImportRef}
+          type="file"
+          accept=".json"
+          onChange={(e) => {
+            const targetListId = e.target.dataset.targetListId;
+            if (targetListId) {
+              importToList(e, targetListId);
+            }
+          }}
           style={{ display: 'none' }}
         />
 
@@ -554,6 +711,26 @@ export default function GroupListManager({
                       title="DUPLICATE LIST"
                     >
                       📋
+                    </button>
+                    <button
+                      onClick={() => exportSingleList(list)}
+                      className="retro-button retro-button-green px-3 py-2 text-black text-xs"
+                      title="EXPORT THIS LIST"
+                    >
+                      💾
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (individualImportRef.current) {
+                          individualImportRef.current.dataset.targetListId =
+                            list.id;
+                          individualImportRef.current.click();
+                        }
+                      }}
+                      className="retro-button retro-button-blue px-3 py-2 text-black text-xs"
+                      title="IMPORT TO THIS LIST"
+                    >
+                      📤
                     </button>
                     <button
                       onClick={() =>
