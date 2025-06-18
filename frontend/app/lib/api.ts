@@ -66,7 +66,7 @@ class ApiClient {
 
     // Load session token from localStorage if available
     if (typeof window !== 'undefined') {
-      this.sessionToken = localStorage.getItem('telegram_session_token');
+      this.sessionToken = localStorage.getItem('session_token');
       console.log(
         '🔑 Session token loaded:',
         this.sessionToken ? '[TOKEN EXISTS]' : '[NO TOKEN]'
@@ -282,7 +282,7 @@ class ApiClient {
     if (response.session_token) {
       this.sessionToken = response.session_token;
       if (typeof window !== 'undefined') {
-        localStorage.setItem('telegram_session_token', response.session_token);
+        localStorage.setItem('session_token', response.session_token);
         console.log('💾 Session token saved to localStorage');
       }
     }
@@ -313,7 +313,7 @@ class ApiClient {
     if (response.session_token) {
       this.sessionToken = response.session_token;
       if (typeof window !== 'undefined') {
-        localStorage.setItem('telegram_session_token', response.session_token);
+        localStorage.setItem('session_token', response.session_token);
         console.log('💾 Session token saved to localStorage');
       }
     }
@@ -409,7 +409,7 @@ class ApiClient {
     console.log('🔄 Clearing session...');
     this.sessionToken = null;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('telegram_session_token');
+      localStorage.removeItem('session_token');
       console.log('💾 Session token removed from localStorage');
     }
   }

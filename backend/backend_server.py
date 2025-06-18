@@ -81,6 +81,13 @@ DATABASE_FILE = os.getenv('DATABASE_URL', 'telegram_sender.db').replace('sqlite:
 RATE_LIMIT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PER_MINUTE', '10'))
 MAX_RECIPIENTS_PER_MESSAGE = int(os.getenv('MAX_RECIPIENTS_PER_MESSAGE', '50'))
 
+# Development auto-login configuration
+# Enable auto-login if we have dev credentials, regardless of FLASK_ENV
+DEV_API_ID = os.getenv('API_ID')
+DEV_API_HASH = os.getenv('API_HASH')
+DEV_PHONE_NUMBER = os.getenv('PHONE_NUMBER')
+DEV_AUTO_LOGIN = bool(DEV_API_ID and DEV_API_HASH and DEV_PHONE_NUMBER)
+
 # Note: API_ID and API_HASH are provided per-user through the login form
 # No global validation needed since each user has their own credentials
 
@@ -482,7 +489,7 @@ class TelegramManager:
                 'message': f'Verification failed: {str(e)}'
             }
     
-    async def get_dialogs(self, phone_number: str) -> List[Dict]:
+    async def get_dialogs(self, phone_number: str, include_admin_status: bool = False) -> List[Dict]:
         """Get all dialogs/chats for a user"""
         if phone_number not in self.clients:
             raise Exception("Client not connected")
@@ -500,12 +507,17 @@ class TelegramManager:
                 name = f"{entity.first_name or ''} {entity.last_name or ''}".strip()
                 if not name:
                     name = entity.username or f"User {entity.id}"
+                is_admin = None  # Not applicable for users
             elif isinstance(entity, Chat):
                 chat_type = 'group'
                 name = entity.title
+                # Check admin status if requested (with rate limiting consideration)
+                is_admin = await self._check_admin_status_safe(client, entity) if include_admin_status else None
             elif isinstance(entity, Channel):
                 chat_type = 'channel' if entity.broadcast else 'supergroup'
                 name = entity.title
+                # Check admin status if requested (with rate limiting consideration)
+                is_admin = await self._check_admin_status_safe(client, entity) if include_admin_status else None
             else:
                 continue
             
@@ -514,10 +526,235 @@ class TelegramManager:
                 'name': name,
                 'type': chat_type,
                 'username': getattr(entity, 'username', None),
-                'participants_count': getattr(entity, 'participants_count', None)
+                'participants_count': getattr(entity, 'participants_count', None),
+                'is_admin': is_admin
             })
         
         return chats
+    
+    async def _check_admin_status_safe(self, client: TelegramClient, entity) -> Optional[bool]:
+        """Safely check admin status with rate limiting and error handling"""
+        try:
+            # Add a small delay to avoid rate limiting
+            await asyncio.sleep(0.1)
+            
+            # Use a simplified approach that's less likely to cause flood wait
+            # For channels/supergroups, use get_permissions which is more efficient
+            if isinstance(entity, Channel):
+                try:
+                    permissions = await client.get_permissions(entity, 'me')
+                    return permissions.is_admin or permissions.is_creator
+                except Exception:
+                    # If we can't check, return None instead of failing
+                    return None
+            
+            # For regular groups, try the permissions approach first
+            elif isinstance(entity, Chat):
+                try:
+                    permissions = await client.get_permissions(entity, 'me')
+                    return permissions.is_admin or permissions.is_creator
+                except Exception:
+                    # If permissions fail, don't try participants to avoid flood wait
+                    return None
+            
+            return None
+            
+        except Exception as e:
+            # Log the error but don't fail the entire dialog loading
+            logger.debug(f"Safe admin check failed for {getattr(entity, 'title', entity.id)}: {str(e)}")
+            return None
+    
+    async def _check_admin_status(self, client: TelegramClient, entity) -> bool:
+        """Check if the current user is an admin in the given group/channel"""
+        try:
+            # For regular groups (Chat), check if we can get participants
+            if isinstance(entity, Chat):
+                try:
+                    # For small groups, we can get all participants and check our status
+                    participants = await client.get_participants(entity)
+                    me = await client.get_me()
+                    
+                    for participant in participants:
+                        if hasattr(participant, 'user_id') and participant.user_id == me.id:
+                            # Check if we have admin privileges
+                            from telethon.tl.types import ChatParticipantAdmin, ChatParticipantCreator
+                            return isinstance(participant, (ChatParticipantAdmin, ChatParticipantCreator))
+                    return False
+                except Exception:
+                    # Fallback: try permissions method
+                    permissions = await client.get_permissions(entity, 'me')
+                    return permissions.is_admin or permissions.is_creator
+            
+            # For channels/supergroups (Channel), use permissions
+            elif isinstance(entity, Channel):
+                permissions = await client.get_permissions(entity, 'me')
+                return permissions.is_admin or permissions.is_creator
+            
+            # For other types, return False
+            else:
+                return False
+                
+        except Exception as e:
+            # If we can't check permissions (e.g., left the group, insufficient permissions),
+            # assume not an admin and log the error for debugging
+            logger.debug(f"Could not check admin status for {getattr(entity, 'title', entity.id)}: {str(e)}")
+            return False
+    
+    async def check_single_admin_status(self, phone_number: str, chat_id: str) -> bool:
+        """Check admin status for a single chat by ID"""
+        if phone_number not in self.clients:
+            raise Exception("Client not connected")
+        
+        client = self.clients[phone_number]
+        
+        try:
+            # Get the entity by ID
+            entity = await client.get_entity(int(chat_id))
+            
+            # Check admin status using our existing method
+            return await self._check_admin_status(client, entity)
+            
+        except Exception as e:
+            logger.debug(f"Could not check admin status for chat {chat_id}: {str(e)}")
+            return False
+    
+    async def can_rename_chat(self, phone_number: str, chat_id: str) -> Dict:
+        """Check if user can rename a specific chat"""
+        if phone_number not in self.clients:
+            raise Exception("Client not connected")
+        
+        client = self.clients[phone_number]
+        
+        try:
+            # Get the entity by ID
+            entity = await client.get_entity(int(chat_id))
+            
+            # Check if it's a user (can't be renamed)
+            from telethon.tl.types import User
+            if isinstance(entity, User):
+                return {
+                    'can_rename': False,
+                    'reason': 'Users cannot be renamed'
+                }
+            
+            # Get detailed permissions for the current user
+            permissions = await client.get_permissions(entity, 'me')
+            
+            # Check various permission indicators
+            can_rename = False
+            reason = "Unknown permission status"
+            
+            # For channels/supergroups, check specific permissions
+            from telethon.tl.types import Channel
+            if isinstance(entity, Channel):
+                if permissions.is_creator:
+                    can_rename = True
+                    reason = "You are the creator"
+                elif permissions.is_admin and hasattr(permissions, 'change_info') and permissions.change_info:
+                    can_rename = True
+                    reason = "You have admin rights to change info"
+                elif permissions.is_admin:
+                    can_rename = False
+                    reason = "Admin but no 'change info' permission"
+                else:
+                    can_rename = False
+                    reason = "Not an admin"
+            
+            # For regular groups, check if user has admin rights or if group allows all members
+            from telethon.tl.types import Chat
+            if isinstance(entity, Chat):
+                if permissions.is_creator:
+                    can_rename = True
+                    reason = "You are the creator"
+                elif permissions.is_admin:
+                    can_rename = True
+                    reason = "You are an admin"
+                else:
+                    # For regular groups, sometimes all members can change title
+                    # We can't determine this from permissions alone
+                    can_rename = None  # Unknown - need to try
+                    reason = "Permission unclear - group settings dependent"
+            
+            return {
+                'can_rename': can_rename,
+                'reason': reason,
+                'is_admin': permissions.is_admin,
+                'is_creator': permissions.is_creator
+            }
+            
+        except Exception as e:
+            logger.debug(f"Could not check rename permissions for chat {chat_id}: {str(e)}")
+            return {
+                'can_rename': False,
+                'reason': f"Error checking permissions: {str(e)}"
+            }
+    
+    async def rename_chat(self, phone_number: str, chat_id: str, new_title: str) -> Dict:
+        """Rename a chat/group (permissions depend on group settings)"""
+        if phone_number not in self.clients:
+            raise Exception("Client not connected")
+        
+        client = self.clients[phone_number]
+        
+        try:
+            # Get the entity by ID
+            entity = await client.get_entity(int(chat_id))
+            
+            # Check if it's a group or channel (users can't be renamed)
+            from telethon.tl.types import User
+            if isinstance(entity, User):
+                return {
+                    'success': False,
+                    'message': 'Cannot rename users, only groups and channels'
+                }
+            
+            # Try to rename - let Telegram's API handle permission validation
+            # Use edit_admin method for groups or edit_title for channels
+            from telethon.tl.functions.messages import EditChatTitleRequest
+            from telethon.tl.functions.channels import EditTitleRequest
+            from telethon.tl.types import Chat, Channel
+            
+            if isinstance(entity, Chat):
+                # For regular groups
+                await client(EditChatTitleRequest(chat_id=entity.id, title=new_title))
+            elif isinstance(entity, Channel):
+                # For channels/supergroups
+                await client(EditTitleRequest(channel=entity, title=new_title))
+            else:
+                raise Exception("Unsupported chat type for renaming")
+            
+            logger.info(f"✅ Successfully renamed chat {chat_id} to '{new_title}'")
+            
+            return {
+                'success': True,
+                'message': f'Chat renamed to "{new_title}"'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error renaming chat {chat_id}: {str(e)}")
+            
+            # Provide more specific error messages based on Telegram's response
+            error_msg = str(e).lower()
+            if 'permission' in error_msg or 'admin' in error_msg or 'right' in error_msg:
+                return {
+                    'success': False,
+                    'message': 'You don\'t have permission to rename this chat. Check group settings or contact an admin.'
+                }
+            elif 'flood' in error_msg or 'wait' in error_msg:
+                return {
+                    'success': False,
+                    'message': 'Rate limited by Telegram. Please try again later.'
+                }
+            elif 'chat' in error_msg and 'invalid' in error_msg:
+                return {
+                    'success': False,
+                    'message': 'Chat not found or no longer accessible.'
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'Failed to rename chat: {str(e)}'
+                }
     
     async def send_message_to_recipients(self, phone_number: str, recipients: List[Dict], message: str) -> List[Dict]:
         """Send message to multiple recipients"""
@@ -804,17 +1041,67 @@ def auth_status():
     """Check authentication status"""
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
+        # In development mode, check if we have an auto-connected session
+        if DEV_AUTO_LOGIN and DEV_PHONE_NUMBER:
+            # Check if session file exists and try to connect
+            session_file = os.path.join(SESSIONS_DIR, f"{DEV_PHONE_NUMBER}.session")
+            if os.path.exists(session_file):
+                if not telegram_manager.is_connected(DEV_PHONE_NUMBER):
+                    logger.info(f"🔧 DEV: Attempting to restore session for {DEV_PHONE_NUMBER}")
+                    try:
+                        # Try to restore the client session
+                        result = run_async(telegram_manager.create_client(DEV_API_ID, DEV_API_HASH, DEV_PHONE_NUMBER))
+                        if result['success']:
+                            logger.info(f"✅ DEV: Auto-connected successfully for {DEV_PHONE_NUMBER}")
+                    except Exception as e:
+                        logger.error(f"❌ DEV: Auto-connect failed: {e}")
+                
+                # Check if now connected
+                if telegram_manager.is_connected(DEV_PHONE_NUMBER):
+                    token = generate_token(DEV_PHONE_NUMBER)
+                    return jsonify({
+                        'connected': True,
+                        'phone_number': DEV_PHONE_NUMBER,
+                        'dev_auto_login': True,
+                        'session_token': token
+                    })
         return jsonify({'connected': False}), 401
     
     token = auth_header.split(' ')[1]
     phone_number = verify_token(token)
     
     if not phone_number:
+        # In development mode, provide fallback token
+        if DEV_AUTO_LOGIN and DEV_PHONE_NUMBER and telegram_manager.is_connected(DEV_PHONE_NUMBER):
+            token = generate_token(DEV_PHONE_NUMBER)
+            return jsonify({
+                'connected': True,
+                'phone_number': DEV_PHONE_NUMBER,
+                'dev_auto_login': True,
+                'session_token': token
+            })
         return jsonify({'connected': False}), 401
     
     return jsonify({
         'connected': telegram_manager.is_connected(phone_number),
         'phone_number': phone_number
+    })
+
+@app.route('/api/dev/auto-auth', methods=['GET'])
+def dev_auto_auth():
+    """Development endpoint for auto-authentication"""
+    if not DEV_AUTO_LOGIN:
+        return jsonify({'error': 'Auto-auth only available in development'}), 403
+    
+    if not DEV_PHONE_NUMBER or not telegram_manager.is_connected(DEV_PHONE_NUMBER):
+        return jsonify({'error': 'No auto-connected session available'}), 404
+    
+    token = generate_token(DEV_PHONE_NUMBER)
+    return jsonify({
+        'success': True,
+        'session_token': token,
+        'phone_number': DEV_PHONE_NUMBER,
+        'message': 'Auto-authenticated for development'
     })
 
 @app.route('/api/chats', methods=['GET'])
@@ -830,12 +1117,106 @@ def get_chats():
     if not phone_number or not telegram_manager.is_connected(phone_number):
         return jsonify({'error': 'Not authenticated'}), 401
     
+    # Check if admin status should be included (optional query parameter)
+    include_admin_status = request.args.get('include_admin_status', 'false').lower() == 'true'
+    
     try:
-        chats = run_async(telegram_manager.get_dialogs(phone_number))
-        return jsonify({'chats': chats})
+        chats = run_async(telegram_manager.get_dialogs(phone_number, include_admin_status))
+        return jsonify({
+            'chats': chats,
+            'admin_status_included': include_admin_status
+        })
         
     except Exception as e:
         logger.error(f"Error getting chats: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chats/<chat_id>/admin-status', methods=['GET'])
+def check_admin_status(chat_id):
+    """Check admin status for a specific chat"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'No authorization header'}), 401
+    
+    token = auth_header.split(' ')[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number or not telegram_manager.is_connected(phone_number):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    try:
+        is_admin = run_async(telegram_manager.check_single_admin_status(phone_number, chat_id))
+        return jsonify({'chat_id': chat_id, 'is_admin': is_admin})
+        
+    except Exception as e:
+        logger.error(f"Error checking admin status for chat {chat_id}: {str(e)}")
+        return jsonify({'error': str(e), 'is_admin': False}), 500
+
+@app.route('/api/chats/<chat_id>/can-rename', methods=['GET'])
+def check_rename_permissions(chat_id):
+    """Check if user can rename a specific chat"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'No authorization header'}), 401
+    
+    token = auth_header.split(' ')[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number or not telegram_manager.is_connected(phone_number):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    try:
+        result = run_async(telegram_manager.can_rename_chat(phone_number, chat_id))
+        return jsonify({
+            'chat_id': chat_id,
+            **result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking rename permissions for chat {chat_id}: {str(e)}")
+        return jsonify({
+            'error': str(e), 
+            'can_rename': False,
+            'reason': 'Error checking permissions'
+        }), 500
+
+@app.route('/api/chats/<chat_id>/rename', methods=['POST'])
+@rate_limit()
+def rename_chat(chat_id):
+    """Rename a chat/group (permissions depend on group settings)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'No authorization header'}), 401
+    
+    token = auth_header.split(' ')[1]
+    phone_number = verify_token(token)
+    
+    if not phone_number or not telegram_manager.is_connected(phone_number):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    data = request.get_json()
+    new_title = data.get('new_title', '').strip()
+    
+    if not new_title:
+        return jsonify({'error': 'New title is required'}), 400
+    
+    if len(new_title) > 255:
+        return jsonify({'error': 'Title too long (max 255 characters)'}), 400
+    
+    try:
+        result = run_async(telegram_manager.rename_chat(phone_number, chat_id, new_title))
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': f'Chat renamed to "{new_title}"',
+                'new_title': new_title
+            })
+        else:
+            return jsonify({'error': result['message']}), 400
+        
+    except Exception as e:
+        logger.error(f"Error renaming chat {chat_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/send', methods=['POST'])
@@ -1558,6 +1939,31 @@ def cleanup_media_files(media_files_info: List[Dict]):
     except Exception as e:
         logger.warning(f"Failed to cleanup media directory: {str(e)}")
 
+async def auto_login_dev():
+    """Auto-login for development environment"""
+    if not DEV_AUTO_LOGIN or not all([DEV_API_ID, DEV_API_HASH, DEV_PHONE_NUMBER]):
+        logger.info("🔧 Auto-login disabled or missing credentials")
+        return
+    
+    try:
+        logger.info(f"🔧 DEV: Auto-connecting to Telegram for {DEV_PHONE_NUMBER}...")
+        
+        # Check if already connected
+        if telegram_manager.is_connected(DEV_PHONE_NUMBER):
+            logger.info(f"✅ DEV: Already connected to Telegram for {DEV_PHONE_NUMBER}")
+            return
+        
+        # Try to create/restore client
+        result = await telegram_manager.create_client(DEV_API_ID, DEV_API_HASH, DEV_PHONE_NUMBER)
+        
+        if result['success']:
+            logger.info(f"🎉 DEV: Auto-login successful for {DEV_PHONE_NUMBER}")
+        else:
+            logger.warning(f"⚠️  DEV: Auto-login failed for {DEV_PHONE_NUMBER}: {result.get('message', 'Unknown error')}")
+            
+    except Exception as e:
+        logger.error(f"❌ DEV: Auto-login error: {str(e)}")
+
 if __name__ == '__main__':
     # Create necessary directories
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -1577,11 +1983,15 @@ if __name__ == '__main__':
     logger.info("🔄 Restoring existing Telegram sessions...")
     run_async(telegram_manager.restore_existing_sessions())
     
+    # Auto-login for development
+    if DEV_AUTO_LOGIN:
+        run_async(auto_login_dev())
+    
     logger.info("🚀 Starting Flask server...")
     
     try:
-        # Run Flask app
-        app.run(debug=True, host='0.0.0.0', port=8000)
+        # Run Flask app (disable debug mode to prevent auto-reload and database locks)
+        app.run(debug=False, host='0.0.0.0', port=8000)
     finally:
         # Clean shutdown
         logger.info("🛑 Shutting down server...")
