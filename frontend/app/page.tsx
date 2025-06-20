@@ -20,11 +20,14 @@ import {
   Upload,
 } from 'lucide-react';
 import apiClient from './lib/api';
+
 import AuthForms from './components/AuthForms';
 import ComposeMessage from './components/ComposeMessage';
 import GroupListManager from './components/GroupListManager';
 import DataStorageViewer from './components/DataStorageViewer';
 import PrivacyNotice from './components/PrivacyNotice';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 interface Chat {
   id: string;
@@ -191,7 +194,7 @@ export default function Home() {
       if (!status.connected) {
         try {
           const devAuthResponse = await fetch(
-            'http://localhost:8000/api/dev/auto-auth'
+            `${API_BASE_URL}/api/dev/auto-auth`
           );
           if (devAuthResponse.ok) {
             const devAuth = await devAuthResponse.json();
@@ -244,7 +247,7 @@ export default function Home() {
       try {
         // Load admin status
         const adminResponse = await fetch(
-          `http://localhost:8000/api/chats/${chat.id}/admin-status`,
+          `${API_BASE_URL}/api/chats/${chat.id}/admin-status`,
           {
             headers: {
               Authorization: `Bearer ${
@@ -267,7 +270,7 @@ export default function Home() {
 
         // Load rename permissions
         const renameResponse = await fetch(
-          `http://localhost:8000/api/chats/${chat.id}/can-rename`,
+          `${API_BASE_URL}/api/chats/${chat.id}/can-rename`,
           {
             headers: {
               Authorization: `Bearer ${
@@ -301,16 +304,13 @@ export default function Home() {
   const loadScheduledMessages = async () => {
     setLoadingScheduled(true);
     try {
-      const response = await fetch(
-        'https://141-136-35-8.sslip.io/api/messages/scheduled',
-        {
-          headers: {
-            Authorization: `Bearer ${
-              localStorage.getItem('session_token') || ''
-            }`,
-          },
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/messages/scheduled`, {
+        headers: {
+          Authorization: `Bearer ${
+            localStorage.getItem('session_token') || ''
+          }`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error('Failed to load scheduled messages');
@@ -328,7 +328,7 @@ export default function Home() {
   const executeScheduledMessage = async (messageId: string) => {
     try {
       const response = await fetch(
-        `https://141-136-35-8.sslip.io/api/messages/execute/${messageId}`,
+        `${API_BASE_URL}/api/messages/execute/${messageId}`,
         {
           method: 'POST',
           headers: {
@@ -357,7 +357,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `https://141-136-35-8.sslip.io/api/messages/${messageId}`,
+        `${API_BASE_URL}/api/messages/${messageId}`,
         {
           method: 'DELETE',
           headers: {
@@ -504,7 +504,7 @@ export default function Home() {
     setIsRenaming(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/chats/${chatId}/rename`,
+        `${API_BASE_URL}/api/chats/${chatId}/rename`,
         {
           method: 'POST',
           headers: {
